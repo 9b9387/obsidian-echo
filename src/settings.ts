@@ -32,7 +32,6 @@ export interface AIPluginSettings {
 	systemPrompt: string;
 	slashTrigger: string;
 	streamingEnabled: boolean;
-	insertMode: "cursor" | "replace";
 	customActions: CustomAction[];
 }
 
@@ -72,12 +71,29 @@ export const DEFAULT_SETTINGS: AIPluginSettings = {
 	systemPrompt: "You are a helpful writing assistant. Respond in the same language as the user's input unless instructed otherwise.",
 	slashTrigger: "/",
 	streamingEnabled: true,
-	insertMode: "cursor",
-	customActions: [],
+	customActions: [
+		{
+			id: "echo",
+			name: "Echo",
+			promptTemplate: "{{full}}\n\nContinue writing naturally from where the current section ends. Expand on the topic, add detail, and maintain the same structure and depth as sibling sections.",
+			outputMode: "nextLine",
+			triggerMode: "both",
+			icon: "sparkles",
+		},
+		{
+			id: "translate",
+			name: "Translate",
+			promptTemplate: "Translate the following text. If no target language is specified by the user, translate to English. Preserve the original formatting.\n\n{{selection}}",
+			outputMode: "replace",
+			triggerMode: "both",
+			icon: "languages",
+		}
+	],
 };
 
 export class AISettingTab extends PluginSettingTab {
 	plugin: AIPlugin;
+	editingActions: Set<string> = new Set();
 
 	constructor(app: App, plugin: AIPlugin) {
 		super(app, plugin);
@@ -472,28 +488,6 @@ export class AISettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}
 				}));
-
-		new Setting(containerEl)
-			.setName("Streaming output")
-			.setDesc("Show AI response as it's being generated")
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.streamingEnabled)
-				.onChange(async (value) => {
-					this.plugin.settings.streamingEnabled = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName("Default insert mode")
-			.setDesc("How to insert AI output when text is selected")
-			.addDropdown(dropdown => dropdown
-				.addOption("replace", "Replace selection")
-				.addOption("cursor", "Insert at cursor")
-				.setValue(this.plugin.settings.insertMode)
-				.onChange(async (value) => {
-					this.plugin.settings.insertMode = value as "cursor" | "replace";
-					await this.plugin.saveSettings();
-				}));
 	}
 
 	private renderCustomActionsSection(containerEl: HTMLElement): void {
@@ -511,17 +505,23 @@ export class AISettingTab extends PluginSettingTab {
 			const idx = i;
 			const wrapper = containerEl.createDiv({cls: "ai-custom-action-item"});
 
-			new Setting(wrapper)
-				.setName(`Action: ${action.name || "(unnamed)"}`)
-				.addText(text => text
-					.setPlaceholder("Action name")
-					.setValue(action.name)
-					.onChange(async (value) => {
-						action.name = value;
-						action.id = "custom-" + value.toLowerCase().replace(/\s+/g, "-");
-						await this.plugin.saveSettings();
-					}))
-				.addExtraButton(btn => btn
+			const isEditing = this.editingActions.has(action.id);
+
+			if (!isEditing) {
+				// Summary View
+				const summarySetting = new Setting(wrapper)
+					.setName(action.name || "(Unnamed Action)")
+					.setDesc(`Trigger: ${action.triggerMode} | Output: ${action.outputMode}`);
+
+				summarySetting.addButton(btn => btn
+					.setIcon("pencil")
+					.setTooltip("Edit action")
+					.onClick(() => {
+						this.editingActions.add(action.id);
+						this.display();
+					}));
+
+				summarySetting.addExtraButton(btn => btn
 					.setIcon("trash")
 					.setTooltip("Delete action")
 					.onClick(async () => {
@@ -529,21 +529,111 @@ export class AISettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.display();
 					}));
-
-			new Setting(wrapper)
-				.setName("Prompt template")
-				.setDesc("Use {{selection}} for selected text, {{input}} for user input")
-				.addTextArea((text: TextAreaComponent) => {
-					text
-						.setPlaceholder("Translate the following text to English:\n\n{{selection}}")
-						.setValue(action.promptTemplate)
+			} else {
+				// Editing View
+				new Setting(wrapper)
+					.setName(`Action Name`)
+					.addText(text => text
+						.setPlaceholder("Action name")
+						.setValue(action.name)
 						.onChange(async (value) => {
-							action.promptTemplate = value;
+							action.name = value;
+							action.id = "custom-" + value.toLowerCase().replace(/\s+/g, "-");
 							await this.plugin.saveSettings();
-						});
-					text.inputEl.rows = 3;
-					text.inputEl.cols = 50;
-				});
+						}))
+					.addExtraButton(btn => btn
+						.setIcon("trash")
+						.setTooltip("Delete action")
+						.onClick(async () => {
+							actions.splice(idx, 1);
+							this.editingActions.delete(action.id);
+							await this.plugin.saveSettings();
+							this.display();
+						}));
+
+				new Setting(wrapper)
+					.setName("Trigger method")
+					.setDesc("Where to show this command")
+					.addDropdown(dropdown => dropdown
+						.addOption("slash", "Slash command only")
+						.addOption("toolbar", "Selection toolbar only")
+						.addOption("both", "Both slash and toolbar")
+						.setValue(action.triggerMode || "both")
+						.onChange(async (value) => {
+							const newMode = value as "slash" | "toolbar" | "both";
+							action.triggerMode = newMode;
+							if (newMode === "slash") {
+								action.outputMode = "cursor";
+							}
+							await this.plugin.saveSettings();
+							this.display();
+						}));
+
+				if (action.triggerMode !== "slash") {
+					const iconDesc = document.createDocumentFragment();
+					iconDesc.appendText("Lucide icon name. Find icons at ");
+					iconDesc.createEl("a", { text: "lucide.dev/icons", href: "https://lucide.dev/icons/" });
+
+					new Setting(wrapper)
+						.setName("Icon")
+						.setDesc(iconDesc)
+						.addText(text => text
+							.setPlaceholder("zap")
+							.setValue(action.icon || "zap")
+							.onChange(async (value) => {
+								action.icon = value;
+								await this.plugin.saveSettings();
+							}));
+
+					new Setting(wrapper)
+						.setName("Output mode")
+						.setDesc("How to insert AI output")
+						.addDropdown(dropdown => dropdown
+							.addOption("replace", "Replace selection")
+							.addOption("cursor", "Insert at cursor")
+							.addOption("nextLine", "Insert at next line")
+							.setValue(action.outputMode || "nextLine")
+							.onChange(async (value) => {
+								action.outputMode = value as "replace" | "cursor" | "nextLine";
+								await this.plugin.saveSettings();
+							}));
+				}
+
+				let placeholdersDesc = "Placeholders: {{selection}}, {{outline}}, {{section}}, {{full}}, {{input}}.";
+				if (action.triggerMode === "slash") {
+					placeholdersDesc = "Placeholders: {{outline}}, {{section}}, {{full}}, {{input}}. (Slash does not support {{selection}})";
+				} else if (action.triggerMode === "toolbar") {
+					placeholdersDesc = "Placeholders: {{selection}}, {{outline}}, {{section}}, {{full}}. (Toolbar does not support {{input}})";
+				}
+
+				new Setting(wrapper)
+					.setName("Prompt template")
+					.setDesc(placeholdersDesc)
+					.addTextArea((text: TextAreaComponent) => {
+						text
+							.setPlaceholder("Translate the following text to English:\n\n{{selection}}")
+							.setValue(action.promptTemplate)
+							.onChange(async (value) => {
+								action.promptTemplate = value;
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.rows = 3;
+						text.inputEl.cols = 50;
+					});
+
+				new Setting(wrapper)
+					.addButton(btn => btn
+						.setButtonText("Save action")
+						.setCta()
+						.onClick(() => {
+							if (!action.name.trim()) {
+								import("obsidian").then(({Notice}) => new Notice("Action name cannot be empty."));
+								return;
+							}
+							this.editingActions.delete(action.id);
+							this.display();
+						}));
+			}
 		}
 
 		new Setting(containerEl)
@@ -551,11 +641,16 @@ export class AISettingTab extends PluginSettingTab {
 				.setButtonText("Add action")
 				.setCta()
 				.onClick(async () => {
-					actions.push({
+					const newAction = {
 						id: "custom-" + Date.now(),
 						name: "",
 						promptTemplate: "",
-					});
+						outputMode: "nextLine",
+						triggerMode: "both",
+						icon: "zap",
+					} as const;
+					actions.push(newAction);
+					this.editingActions.add(newAction.id);
 					await this.plugin.saveSettings();
 					this.display();
 				}));

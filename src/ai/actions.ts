@@ -2,24 +2,6 @@ import type {AIAction, CustomAction} from "../types";
 
 export const BUILTIN_ACTIONS: AIAction[] = [
 	{
-		id: "echo",
-		name: "Echo",
-		description: "AI writes or continues content based on context",
-		promptTemplate: "",
-		needsInput: false,
-		usesSelection: false,
-		icon: "sparkles",
-	},
-	{
-		id: "translate",
-		name: "Translate",
-		description: "Translate text to another language",
-		promptTemplate: "Translate the following text. If no target language is specified by the user, translate to English. Preserve the original formatting.\n\n{{selection}}",
-		needsInput: false,
-		usesSelection: true,
-		icon: "languages",
-	},
-	{
 		id: "generate-image",
 		name: "Generate image",
 		description: "Generate an image from text description",
@@ -27,25 +9,32 @@ export const BUILTIN_ACTIONS: AIAction[] = [
 		needsInput: true,
 		usesSelection: true,
 		icon: "image",
+		outputMode: "nextLine",
+		triggerMode: "toolbar",
 	},
 ];
 
 export function customActionToAIAction(ca: CustomAction): AIAction {
+	const template = ca.promptTemplate || "";
 	return {
 		id: ca.id,
 		name: ca.name,
 		description: `Custom: ${ca.name}`,
-		promptTemplate: ca.promptTemplate,
-		needsInput: ca.promptTemplate.includes("{{input}}"),
-		usesSelection: ca.promptTemplate.includes("{{selection}}"),
-		icon: "zap",
+		promptTemplate: template,
+		needsInput: template.includes("{{input}}"),
+		usesSelection: template.includes("{{selection}}"),
+		icon: ca.icon || "zap",
+		outputMode: ca.outputMode,
+		triggerMode: ca.triggerMode,
 	};
 }
 
-export function buildPrompt(template: string, selection: string, input: string): string {
-	return template
-		.replace(/\{\{selection}}/g, selection)
-		.replace(/\{\{input}}/g, input);
+export function buildPrompt(template: string, replacements: Record<string, string>): string {
+	let result = template;
+	for (const [key, value] of Object.entries(replacements)) {
+		result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+	}
+	return result;
 }
 
 export function getAllActions(customActions: CustomAction[]): AIAction[] {

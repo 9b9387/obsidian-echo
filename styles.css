@@ -180,24 +180,23 @@
 /* Generating indicator */
 .ai-generating-indicator {
 	position: fixed;
-	bottom: 40px;
-	right: 16px;
 	z-index: var(--layer-popover);
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 8px 14px;
+	gap: 6px;
+	padding: 4px 10px;
 	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 10px;
+	border: 1px solid var(--interactive-accent);
+	border-radius: 20px;
 	box-shadow: var(--shadow-s);
-	font-size: 0.85em;
-	animation: ai-indicator-slidein 0.2s ease-out;
+	font-size: 0.8em;
+	animation: ai-indicator-fadein 0.2s ease-out;
+	will-change: transform;
 }
 
-@keyframes ai-indicator-slidein {
-	from { opacity: 0; transform: translateY(8px); }
-	to   { opacity: 1; transform: translateY(0); }
+@keyframes ai-indicator-fadein {
+	from { opacity: 0; transform: scale(0.95); }
+	to   { opacity: 1; transform: scale(1); }
 }
 
 .ai-generating-indicator.ai-generating-done {
@@ -255,10 +254,6 @@
 .ai-generating-cancel svg {
 	width: 12px;
 	height: 12px;
-}
-
-.ai-generating-cancel-hint {
-	font-size: 0.9em;
 }
 
 /* Inline ask input */

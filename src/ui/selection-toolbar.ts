@@ -1,9 +1,8 @@
 import {MarkdownView, setIcon} from "obsidian";
 import type AIPlugin from "../main";
-import {BUILTIN_ACTIONS} from "../ai/actions";
+import {getAllActions} from "../ai/actions";
 import type {AIAction} from "../types";
 
-const TOOLBAR_ACTIONS = ["echo", "translate", "generate-image"];
 const SHOW_DELAY = 350;
 
 export class SelectionToolbar {
@@ -11,6 +10,7 @@ export class SelectionToolbar {
 	private plugin: AIPlugin;
 	private visible = false;
 	private showTimer: ReturnType<typeof setTimeout> | null = null;
+	private handledSelection: string | null = null;
 
 	constructor(plugin: AIPlugin) {
 		this.plugin = plugin;
@@ -18,11 +18,17 @@ export class SelectionToolbar {
 		this.buildButtons();
 	}
 
+	rebuild(): void {
+		this.el.empty();
+		this.buildButtons();
+	}
+
 	private buildButtons(): void {
-		for (const actionId of TOOLBAR_ACTIONS) {
-			const action = BUILTIN_ACTIONS.find(a => a.id === actionId);
-			if (!action) continue;
-			this.addButton(action);
+		const allActions = getAllActions(this.plugin.settings.customActions);
+		for (const action of allActions) {
+			if (action.triggerMode === "toolbar" || action.triggerMode === "both") {
+				this.addButton(action);
+			}
 		}
 	}
 
@@ -47,6 +53,7 @@ export class SelectionToolbar {
 		const selection = editor.getSelection();
 		if (!selection) return;
 
+		this.handledSelection = selection;
 		this.hide();
 		void this.plugin.executeAction(action, editor, selection);
 	}
@@ -82,7 +89,16 @@ export class SelectionToolbar {
 		this.visible = false;
 	}
 
-	scheduleShow(rect: DOMRect): void {
+	clearHandledSelection(): void {
+		this.handledSelection = null;
+	}
+
+	scheduleShow(rect: DOMRect, selText: string): void {
+		if (this.handledSelection === selText) {
+			return;
+		}
+		this.handledSelection = null;
+
 		if (this.visible) {
 			this.updatePosition(rect);
 			return;

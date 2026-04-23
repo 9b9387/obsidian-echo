@@ -11,12 +11,17 @@ export interface AIAction {
 	needsInput: boolean;
 	usesSelection: boolean;
 	icon: string;
+	outputMode: "replace" | "cursor" | "nextLine";
+	triggerMode: "slash" | "toolbar" | "both";
 }
 
 export interface CustomAction {
 	id: string;
 	name: string;
 	promptTemplate: string;
+	outputMode: "replace" | "cursor" | "nextLine";
+	triggerMode: "slash" | "toolbar" | "both";
+	icon: string;
 }
 
 export interface ImageStylePreset {

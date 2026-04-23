@@ -41,7 +41,8 @@ export class SlashSuggest extends EditorSuggest<AIAction> {
 
 	getSuggestions(context: EditorSuggestContext): AIAction[] {
 		const query = context.query.toLowerCase();
-		const actions = getAllActions(this.plugin.settings.customActions);
+		const allActions = getAllActions(this.plugin.settings.customActions);
+		const actions = allActions.filter(a => a.triggerMode === "slash" || a.triggerMode === "both");
 		if (!query) return actions;
 		return actions.filter(
 			a =>
@@ -65,11 +66,6 @@ export class SlashSuggest extends EditorSuggest<AIAction> {
 		const {start, end} = this.context;
 
 		editor.replaceRange("", start, end);
-
-		if (action.id === "echo") {
-			void this.plugin.executeInlineWrite(editor);
-			return;
-		}
 
 		const selection = editor.getSelection() || this.plugin.cachedSelection;
 		void this.plugin.executeAction(action, editor, selection);

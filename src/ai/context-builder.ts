@@ -81,6 +81,14 @@ function parseSections(lines: string[]): Section[] {
 				startLine: i,
 				endLine: lines.length,
 			};
+		} else if (!currentSection && line.trim().length > 0) {
+			// Document has content before any heading
+			currentSection = {
+				level: 1,
+				title: "Document",
+				startLine: 0,
+				endLine: lines.length,
+			};
 		}
 	}
 	if (currentSection) {

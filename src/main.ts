@@ -4,9 +4,8 @@ import type {LLMProvider} from "./ai/provider";
 import {OpenAIClient} from "./ai/openai-client";
 import {GeminiClient} from "./ai/gemini-client";
 import {ImageGenerator} from "./ai/image-generator";
-import {buildPrompt, BUILTIN_ACTIONS} from "./ai/actions";
+import {buildPrompt, BUILTIN_ACTIONS, getAllActions} from "./ai/actions";
 import {buildEditorContext, formatContextPrompt, INLINE_ASK_SYSTEM_PROMPT} from "./ai/context-builder";
-import {StreamWriter} from "./ai/stream-writer";
 import {SlashSuggest} from "./ui/slash-suggest";
 import {SelectionToolbar} from "./ui/selection-toolbar";
 import {GeneratingIndicator} from "./ui/generating-indicator";
@@ -64,6 +63,7 @@ export default class AIPlugin extends Plugin {
 		await this.saveData(this.settings);
 		this.client = this.createClient();
 		this.imageGenerator.updateSettings(this.settings);
+		this.selectionToolbar?.rebuild();
 	}
 
 	private createClient(): LLMProvider {
@@ -76,11 +76,6 @@ export default class AIPlugin extends Plugin {
 	async executeAction(action: AIAction, editor: Editor, selection: string): Promise<void> {
 		if (typeof selection !== "string" || selection.includes("[object ")) {
 			selection = "";
-		}
-
-		if (action.id === "echo") {
-			await this.executeInlineWrite(editor);
-			return;
 		}
 
 		const hasKey = this.settings.provider === "gemini"
@@ -117,14 +112,45 @@ export default class AIPlugin extends Plugin {
 		}
 
 		let userInput = "";
-		if (action.needsInput) {
-			const modal = new PromptModal(this.app, {
-				title: action.name,
-				selection: action.usesSelection ? selection : undefined,
-			});
-			const result = await modal.waitForInput();
-			if (result === null) return;
-			userInput = result;
+		let promptText = "";
+		const messages: ChatMessage[] = [];
+		const needsContext = action.promptTemplate.includes("{{outline}}") || action.promptTemplate.includes("{{section}}") || action.promptTemplate.includes("{{full}}");
+
+		let ctx: any = null;
+
+		if (needsContext) {
+			this.activeInlineAsk?.destroy();
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!view) return;
+			const cursor = editor.getCursor();
+			ctx = buildEditorContext(editor);
+
+			if (action.needsInput) {
+				const inlineInput = new InlineAskInput(document.body);
+				this.activeInlineAsk = inlineInput;
+				inlineInput.setContextLabel(ctx.sectionTitle);
+				const offset = editor.posToOffset(cursor);
+				const cmEditor = (view.editor as unknown as {cm: {coordsAtPos: (pos: number) => {left: number; right: number; top: number; bottom: number} | null}}).cm;
+				const coords = cmEditor?.coordsAtPos(offset);
+				if (coords) {
+					inlineInput.positionAt(coords);
+				}
+				inlineInput.focus();
+				const result = await inlineInput.waitForInput();
+				this.activeInlineAsk = null;
+				if (!result) return;
+				userInput = result.question;
+			}
+		} else {
+			if (action.needsInput) {
+				const modal = new PromptModal(this.app, {
+					title: action.name,
+					selection: action.usesSelection ? selection : undefined,
+				});
+				const result = await modal.waitForInput();
+				if (result === null) return;
+				userInput = result;
+			}
 		}
 
 		if (action.usesSelection && !selection) {
@@ -136,66 +162,47 @@ export default class AIPlugin extends Plugin {
 			}
 		}
 
-		const promptText = buildPrompt(action.promptTemplate, selection, userInput);
+		let fullContext = "";
+		if (ctx) {
+			const parts = ["<document_context>"];
+			if (ctx.outline) parts.push(`<outline>\n${ctx.outline}\n</outline>`);
+			if (ctx.sectionContent) parts.push(`<current_section>\n${ctx.sectionContent}\n</current_section>`);
+			if (ctx.siblingContent) parts.push(`<sibling_sections_for_style_reference>\n${ctx.siblingContent}\n</sibling_sections_for_style_reference>`);
+			parts.push("</document_context>");
+			fullContext = parts.join("\n\n");
+		}
 
-		const messages: ChatMessage[] = [];
+		promptText = buildPrompt(action.promptTemplate, {
+			selection,
+			input: userInput,
+			outline: ctx?.outline ?? "",
+			section: ctx?.sectionContent ?? "",
+			full: fullContext
+		});
+
 		if (this.settings.systemPrompt) {
 			messages.push({role: "system", content: this.settings.systemPrompt});
 		}
+
 		messages.push({role: "user", content: promptText});
 
-		const shouldReplace = action.usesSelection && selection && this.settings.insertMode === "replace";
 		let startPos;
+		const from = editor.getCursor("from");
+		const to = editor.getCursor("to");
 
-		if (shouldReplace) {
-			const from = editor.getCursor("from");
-			const to = editor.getCursor("to");
+		if (action.outputMode === "replace") {
 			editor.replaceRange("", from, to);
 			startPos = from;
+		} else if (action.outputMode === "nextLine") {
+			const cursorLine = editor.getLine(to.line);
+			const insertPos = {line: to.line, ch: cursorLine.length};
+			editor.replaceRange("\n\n", insertPos);
+			startPos = {line: insertPos.line + 2, ch: 0};
 		} else {
-			startPos = editor.getCursor();
+			startPos = to;
 		}
 
-		if (this.settings.streamingEnabled) {
-			await this.streamGenerate(editor, startPos, messages);
-		} else {
-			await this.blockGenerate(editor, startPos, messages);
-		}
-	}
-
-	private async streamGenerate(
-		editor: Editor,
-		startPos: {line: number; ch: number},
-		messages: ChatMessage[],
-	): Promise<void> {
-		const writer = new StreamWriter(editor, startPos);
-		this.setStatus("AI generating...");
-
-		this.generatingIndicator?.show(() => writer.cancel());
-
-		writer.setOnCancel(() => {
-			this.setStatus("Cancelled");
-			this.generatingIndicator?.showCancelled();
-			setTimeout(() => this.setStatus(""), 2000);
-		});
-
-		await this.client.streamChat(
-			messages,
-			(chunk) => writer.write(chunk),
-			() => {
-				writer.finish();
-				this.setStatus("Done");
-				this.generatingIndicator?.showDone();
-				setTimeout(() => this.setStatus(""), 2000);
-			},
-			(err) => {
-				writer.finish();
-				this.setStatus("");
-				this.generatingIndicator?.showError(err.message);
-				new Notice(`AI error: ${err.message}`);
-			},
-			writer.signal,
-		);
+		await this.blockGenerate(editor, startPos, messages);
 	}
 
 	private async blockGenerate(
@@ -204,8 +211,8 @@ export default class AIPlugin extends Plugin {
 		messages: ChatMessage[],
 	): Promise<void> {
 		this.setStatus("AI generating...");
-		const abortController = new AbortController();
-		this.generatingIndicator?.show(() => abortController.abort());
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		this.generatingIndicator?.show(view, editor, startPos);
 
 		try {
 			const result = await this.client.chat(messages);
@@ -223,7 +230,8 @@ export default class AIPlugin extends Plugin {
 
 	private async executeImageGeneration(editor: Editor, prompt: string, sizeValue?: string): Promise<void> {
 		this.setStatus("Generating image...");
-		this.generatingIndicator?.show(() => { /* image generation is not cancellable */ });
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		this.generatingIndicator?.show(view, editor, editor.getCursor());
 
 		try {
 			const result = await this.imageGenerator.generate(prompt, sizeValue);
@@ -258,58 +266,6 @@ export default class AIPlugin extends Plugin {
 		}
 	}
 
-	async executeInlineWrite(editor: Editor): Promise<void> {
-		const hasKey = this.settings.provider === "gemini"
-			? this.settings.geminiApiKey
-			: this.settings.apiKey;
-		if (!hasKey) {
-			new Notice("Please set your API key in settings.");
-			return;
-		}
-
-		this.activeInlineAsk?.destroy();
-
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) return;
-
-		const cursor = editor.getCursor();
-		const ctx = buildEditorContext(editor);
-
-		const inlineInput = new InlineAskInput(document.body);
-		this.activeInlineAsk = inlineInput;
-		inlineInput.setContextLabel(ctx.sectionTitle);
-
-		const offset = editor.posToOffset(cursor);
-		const cmEditor = (view.editor as unknown as {cm: {coordsAtPos: (pos: number) => {left: number; right: number; top: number; bottom: number} | null}}).cm;
-		const coords = cmEditor?.coordsAtPos(offset);
-		if (coords) {
-			inlineInput.positionAt(coords);
-		}
-		inlineInput.focus();
-
-		const result = await inlineInput.waitForInput();
-		this.activeInlineAsk = null;
-		if (!result) return;
-
-		const promptText = formatContextPrompt(ctx, result.question);
-		const messages: ChatMessage[] = [];
-		const sysPrompt = this.settings.systemPrompt
-			? `${INLINE_ASK_SYSTEM_PROMPT}\n\n${this.settings.systemPrompt}`
-			: INLINE_ASK_SYSTEM_PROMPT;
-		messages.push({role: "system", content: sysPrompt});
-		messages.push({role: "user", content: promptText});
-
-		const insertPos = {line: cursor.line, ch: editor.getLine(cursor.line).length};
-		editor.replaceRange("\n\n", insertPos);
-		const startPos = {line: insertPos.line + 2, ch: 0};
-
-		if (this.settings.streamingEnabled) {
-			await this.streamGenerate(editor, startPos, messages);
-		} else {
-			await this.blockGenerate(editor, startPos, messages);
-		}
-	}
-
 	private setStatus(text: string): void {
 		if (this.statusBarEl) {
 			this.statusBarEl.setText(text);
@@ -317,31 +273,16 @@ export default class AIPlugin extends Plugin {
 	}
 
 	private registerCommands(): void {
-		this.addCommand({
-			id: "ai-echo",
-			name: "Echo",
-			editorCallback: (editor: Editor) => {
-				void this.executeInlineWrite(editor);
-			},
-		});
-
-		this.addCommand({
-			id: "ai-translate",
-			name: "Translate selection",
-			editorCallback: (editor: Editor) => {
-				const action = BUILTIN_ACTIONS.find(a => a.id === "translate")!;
-				void this.executeAction(action, editor, editor.getSelection());
-			},
-		});
-
-		this.addCommand({
-			id: "ai-generate-image",
-			name: "Generate image",
-			editorCallback: (editor: Editor) => {
-				const action = BUILTIN_ACTIONS.find(a => a.id === "generate-image")!;
-				void this.executeAction(action, editor, editor.getSelection());
-			},
-		});
+		const allActions = getAllActions(this.settings.customActions);
+		for (const action of allActions) {
+			this.addCommand({
+				id: `ai-action-${action.id}`,
+				name: action.name,
+				editorCallback: (editor: Editor) => {
+					void this.executeAction(action, editor, editor.getSelection());
+				},
+			});
+		}
 	}
 
 	consumeCachedSelection(): string {
@@ -366,10 +307,11 @@ export default class AIPlugin extends Plugin {
 					const range = domSel.getRangeAt(0);
 					const rect = range.getBoundingClientRect();
 					if (rect.width > 0) {
-						this.selectionToolbar?.scheduleShow(rect);
+						this.selectionToolbar?.scheduleShow(rect, sel);
 					}
 				}
 			} else {
+				this.selectionToolbar?.clearHandledSelection();
 				this.selectionToolbar?.hide();
 			}
 		});
@@ -377,6 +319,7 @@ export default class AIPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", () => {
 				this.cachedSelection = "";
+				this.selectionToolbar?.clearHandledSelection();
 				this.selectionToolbar?.hide();
 			}),
 		);
@@ -388,19 +331,16 @@ export default class AIPlugin extends Plugin {
 				const selection = editor.getSelection();
 				if (!selection) return;
 
-				menu.addItem((item) => {
-					item.setTitle("Translate").setIcon("languages").onClick(() => {
-						const action = BUILTIN_ACTIONS.find(a => a.id === "translate")!;
-						void this.executeAction(action, editor, selection);
-					});
-				});
-
-				menu.addItem((item) => {
-					item.setTitle("Generate image").setIcon("image").onClick(() => {
-						const action = BUILTIN_ACTIONS.find(a => a.id === "generate-image")!;
-						void this.executeAction(action, editor, selection);
-					});
-				});
+				const allActions = getAllActions(this.settings.customActions);
+				for (const action of allActions) {
+					if (action.usesSelection && (action.triggerMode === "toolbar" || action.triggerMode === "both")) {
+						menu.addItem((item) => {
+							item.setTitle(action.name).setIcon(action.icon).onClick(() => {
+								void this.executeAction(action, editor, selection);
+							});
+						});
+					}
+				}
 			}),
 		);
 	}
