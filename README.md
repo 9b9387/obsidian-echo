@@ -1,90 +1,103 @@
-# Obsidian Sample Plugin
+# Obsidian Echo
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+AI-powered writing assistant for [Obsidian](https://obsidian.md). Supports OpenAI-compatible APIs and Google Gemini.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+### Echo — Inline AI Writing
 
-## First time developing plugins?
+The core feature. Trigger with `/echo` or the command palette, an inline input appears at the cursor position.
 
-Quick starting guide for new plugin devs:
+- **Type an instruction** and press Enter — AI writes content based on your request
+- **Press Enter directly** (empty input) — AI continues writing from the current position
+- **Smart context** — automatically includes:
+  - Current section content (text between headings)
+  - Document outline (all headings)
+  - Sibling sections as style reference (when current section is short)
+- **Document-native output** — AI responses match the language, tone, and style of your existing content. No conversational filler.
+- **Streaming** — responses appear token-by-token in real time
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### Translate
 
-## Releasing new releases
+Select text and trigger via toolbar, slash command `/translate`, or right-click menu. Translates selected text while preserving formatting.
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+### Generate Image
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+Create AI-generated images from text descriptions.
 
-## Adding your plugin to the community plugin list
+- Select text for context, then trigger via toolbar, `/generate-image`, or right-click menu
+- Choose from preset styles (Photorealistic, Illustration, Watercolor, Oil Painting, Pixel Art, Anime, Minimalist, etc.)
+- Choose image size (Square, Portrait, Landscape)
+- Images are saved to the vault and inserted as Markdown links
+- Supports DALL-E (OpenAI) and Gemini image generation
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### Selection Toolbar
 
-## How to use
+A floating toolbar appears when you select text, providing quick access to Echo, Translate, and Generate Image.
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+### Slash Commands
 
-## Manually installing the plugin
+Type `/` in the editor to trigger a command menu:
+- `/echo` — AI write / continue
+- `/translate` — translate selection
+- `/generate-image` — generate image
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+### Custom Actions
 
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+Define your own AI actions in settings with custom prompt templates. Use `{{selection}}` and `{{input}}` placeholders.
 
-## Funding URL
+## Supported Providers
 
-You can include funding URLs where people who use your plugin can financially support it.
+| Provider | Text Generation | Image Generation |
+|---|---|---|
+| **OpenAI-compatible** | GPT-4o, GPT-4o-mini, etc. | DALL-E 3 |
+| **Google Gemini** | Gemini 2.5 Flash, etc. | Gemini image generation |
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+Switch between providers in settings via a dropdown menu.
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+## Installation
+
+### Manual
+
+1. Download `main.js`, `styles.css`, and `manifest.json` from the [latest release](https://github.com/9b9387/obsidian-echo/releases)
+2. Create a folder `obsidian-echo` in your vault's `.obsidian/plugins/` directory
+3. Copy the downloaded files into the folder
+4. Restart Obsidian and enable the plugin in **Settings → Community plugins**
+
+### From Source
+
+```bash
+git clone git@github.com:9b9387/obsidian-echo.git
+cd obsidian-echo
+npm install
+npm run build
 ```
 
-If you have multiple URLs, you can also do:
+Copy `main.js`, `styles.css`, and `manifest.json` to your vault's `.obsidian/plugins/obsidian-echo/`.
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+## Configuration
+
+Open **Settings → Obsidian Echo** to configure:
+
+- **Provider** — switch between OpenAI-compatible and Gemini
+- **API Key / Base URL / Model** — per-provider configuration
+- **Model Parameters** — temperature, max tokens, top P, frequency/presence penalty
+- **Image Generation** — model, default size, save folder, style presets, size presets
+- **System Prompt** — global system instruction appended to all requests
+- **Slash Trigger** — customize the trigger character (default: `/`)
+- **Streaming** — enable/disable streaming output
+- **Insert Mode** — cursor (insert at cursor) or replace (replace selection)
+- **Custom Actions** — create your own prompt-based actions
+
+## Development
+
+```bash
+npm install
+npm run dev    # watch mode
+npm run build  # production build
+npm run lint   # eslint check
 ```
 
-## API Documentation
+## License
 
-See https://docs.obsidian.md
+[0-BSD](LICENSE)
