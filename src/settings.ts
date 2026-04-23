@@ -1,0 +1,563 @@
+import {App, PluginSettingTab, Setting, TextAreaComponent} from "obsidian";
+import type AIPlugin from "./main";
+import type {CustomAction, ImageStylePreset, ImageSizePreset} from "./types";
+
+export type LLMProviderType = "openai" | "gemini";
+
+export interface AIPluginSettings {
+	provider: LLMProviderType;
+	// OpenAI-compatible
+	apiKey: string;
+	baseUrl: string;
+	model: string;
+	// Gemini
+	geminiApiKey: string;
+	geminiBaseUrl: string;
+	geminiModel: string;
+	geminiTopK: number;
+	// Shared model params
+	temperature: number;
+	maxTokens: number;
+	topP: number;
+	frequencyPenalty: number;
+	presencePenalty: number;
+	// Image generation
+	imageModel: string;
+	imageSize: string;
+	imageSaveFolder: string;
+	geminiImageModel: string;
+	imageStylePresets: ImageStylePreset[];
+	imageSizePresets: ImageSizePreset[];
+	// Behavior
+	systemPrompt: string;
+	slashTrigger: string;
+	streamingEnabled: boolean;
+	insertMode: "cursor" | "replace";
+	customActions: CustomAction[];
+}
+
+export const DEFAULT_SETTINGS: AIPluginSettings = {
+	provider: "openai",
+	apiKey: "",
+	baseUrl: "https://api.openai.com/v1",
+	model: "gpt-4o-mini",
+	geminiApiKey: "",
+	geminiBaseUrl: "https://generativelanguage.googleapis.com",
+	geminiModel: "gemini-2.5-flash",
+	geminiTopK: 40,
+	imageModel: "dall-e-3",
+	imageSize: "1024x1024",
+	imageSaveFolder: "ai-images",
+	geminiImageModel: "gemini-2.0-flash-preview-image-generation",
+	imageStylePresets: [
+		{id: "none", name: "None", prompt: ""},
+		{id: "photorealistic", name: "Photorealistic", prompt: "photorealistic, high detail, professional photography, 8k resolution"},
+		{id: "illustration", name: "Illustration", prompt: "digital illustration, clean vector art style, vivid colors"},
+		{id: "watercolor", name: "Watercolor", prompt: "watercolor painting style, soft edges, delicate color blending"},
+		{id: "oil-painting", name: "Oil painting", prompt: "oil painting style, rich textures, classical fine art"},
+		{id: "pixel-art", name: "Pixel art", prompt: "pixel art style, retro game aesthetic, 16-bit"},
+		{id: "anime", name: "Anime", prompt: "anime style, Japanese animation, cel-shaded"},
+		{id: "minimalist", name: "Minimalist", prompt: "minimalist design, clean lines, simple geometric shapes, flat colors"},
+	],
+	imageSizePresets: [
+		{id: "square", name: "Square (1024×1024)", value: "1024x1024"},
+		{id: "portrait", name: "Portrait (1024×1792)", value: "1024x1792"},
+		{id: "landscape", name: "Landscape (1792×1024)", value: "1792x1024"},
+	],
+	temperature: 0.7,
+	maxTokens: 2048,
+	topP: 1,
+	frequencyPenalty: 0,
+	presencePenalty: 0,
+	systemPrompt: "You are a helpful writing assistant. Respond in the same language as the user's input unless instructed otherwise.",
+	slashTrigger: "/",
+	streamingEnabled: true,
+	insertMode: "cursor",
+	customActions: [],
+};
+
+export class AISettingTab extends PluginSettingTab {
+	plugin: AIPlugin;
+
+	constructor(app: App, plugin: AIPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const {containerEl} = this;
+		containerEl.empty();
+
+		this.renderProviderSection(containerEl);
+
+		if (this.plugin.settings.provider === "openai") {
+			this.renderOpenAISection(containerEl);
+		} else {
+			this.renderGeminiSection(containerEl);
+		}
+
+		this.renderModelSection(containerEl);
+		this.renderImageSection(containerEl);
+		this.renderBehaviorSection(containerEl);
+		this.renderCustomActionsSection(containerEl);
+	}
+
+	private renderProviderSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Provider").setHeading();
+
+		new Setting(containerEl)
+			.setName("LLM provider")
+			.setDesc("Choose the AI service to use")
+			.addDropdown(dropdown => dropdown
+				.addOption("openai", "OpenAI-compatible")
+				.addOption("gemini", "Google Gemini")
+				.setValue(this.plugin.settings.provider)
+				.onChange(async (value) => {
+					this.plugin.settings.provider = value as LLMProviderType;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+	}
+
+	private renderOpenAISection(containerEl: HTMLElement): void {
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		new Setting(containerEl).setName("OpenAI-compatible configuration").setHeading();
+
+		new Setting(containerEl)
+			.setName("API key")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc("Your OpenAI-compatible API key")
+			.addText(text => text
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setPlaceholder("sk-...")
+				.setValue(this.plugin.settings.apiKey)
+				.then(t => t.inputEl.type = "password")
+				.onChange(async (value) => {
+					this.plugin.settings.apiKey = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Base URL")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc("API endpoint (OpenAI, Azure, Ollama, DeepSeek, etc.)")
+			.addText(text => text
+				.setPlaceholder("https://api.openai.com/v1")
+				.setValue(this.plugin.settings.baseUrl)
+				.onChange(async (value) => {
+					this.plugin.settings.baseUrl = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Model")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc("Model identifier (e.g. gpt-4o-mini, deepseek-chat)")
+			.addText(text => text
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setPlaceholder("gpt-4o-mini")
+				.setValue(this.plugin.settings.model)
+				.onChange(async (value) => {
+					this.plugin.settings.model = value;
+					await this.plugin.saveSettings();
+				}));
+	}
+
+	private renderGeminiSection(containerEl: HTMLElement): void {
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		new Setting(containerEl).setName("Google Gemini configuration").setHeading();
+
+		new Setting(containerEl)
+			.setName("API key")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc("Your Google AI Studio API key")
+			.addText(text => text
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setPlaceholder("AIza...")
+				.setValue(this.plugin.settings.geminiApiKey)
+				.then(t => t.inputEl.type = "password")
+				.onChange(async (value) => {
+					this.plugin.settings.geminiApiKey = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Model")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc("Gemini model (e.g. gemini-2.5-flash, gemini-2.5-pro)")
+			.addText(text => text
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setPlaceholder("gemini-2.5-flash")
+				.setValue(this.plugin.settings.geminiModel)
+				.onChange(async (value) => {
+					this.plugin.settings.geminiModel = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Top k")
+			.setDesc("Number of top tokens to sample from (1-100)")
+			.addSlider(slider => slider
+				.setLimits(1, 100, 1)
+				.setValue(this.plugin.settings.geminiTopK)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.geminiTopK = value;
+					await this.plugin.saveSettings();
+				}));
+	}
+
+	private renderModelSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Model parameters").setHeading();
+
+		new Setting(containerEl)
+			.setName("Temperature")
+			.setDesc("Controls randomness (0 = deterministic, 2 = creative)")
+			.addSlider(slider => slider
+				.setLimits(0, 2, 0.1)
+				.setValue(this.plugin.settings.temperature)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.temperature = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Max tokens")
+			.setDesc("Maximum number of tokens in the response")
+			.addText(text => text
+				.setPlaceholder("2048")
+				.setValue(String(this.plugin.settings.maxTokens))
+				.onChange(async (value) => {
+					const num = parseInt(value, 10);
+					if (!isNaN(num) && num > 0) {
+						this.plugin.settings.maxTokens = num;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName("Top p")
+			.setDesc("Nucleus sampling threshold")
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.05)
+				.setValue(this.plugin.settings.topP)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.topP = value;
+					await this.plugin.saveSettings();
+				}));
+
+		if (this.plugin.settings.provider === "openai") {
+			new Setting(containerEl)
+				.setName("Frequency penalty")
+				.setDesc("Penalize repeated tokens (-2 to 2)")
+				.addSlider(slider => slider
+					.setLimits(-2, 2, 0.1)
+					.setValue(this.plugin.settings.frequencyPenalty)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.frequencyPenalty = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName("Presence penalty")
+				.setDesc("Penalize tokens already present (-2 to 2)")
+				.addSlider(slider => slider
+					.setLimits(-2, 2, 0.1)
+					.setValue(this.plugin.settings.presencePenalty)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.presencePenalty = value;
+						await this.plugin.saveSettings();
+					}));
+		}
+	}
+
+	private renderImageSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Image generation").setHeading();
+
+		if (this.plugin.settings.provider === "openai") {
+			new Setting(containerEl)
+				.setName("Image model")
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setDesc("DALL-E model for image generation")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("dall-e-3")
+					.setValue(this.plugin.settings.imageModel)
+					.onChange(async (value) => {
+						this.plugin.settings.imageModel = value;
+						await this.plugin.saveSettings();
+					}));
+		} else {
+			new Setting(containerEl)
+				.setName("Image model")
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				.setDesc("Gemini model for image generation")
+				.addText(text => text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder("gemini-2.0-flash-preview-image-generation")
+					.setValue(this.plugin.settings.geminiImageModel)
+					.onChange(async (value) => {
+						this.plugin.settings.geminiImageModel = value;
+						await this.plugin.saveSettings();
+					}));
+		}
+
+		new Setting(containerEl)
+			.setName("Image save folder")
+			.setDesc("Folder in vault to save generated images")
+			.addText(text => text
+				.setPlaceholder("ai-images")
+				.setValue(this.plugin.settings.imageSaveFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.imageSaveFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		this.renderStylePresets(containerEl);
+		this.renderSizePresets(containerEl);
+	}
+
+	private renderStylePresets(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Style presets").setHeading();
+
+		containerEl.createEl("p", {
+			text: "Style presets are appended to the image prompt to control visual style.",
+			cls: "setting-item-description",
+		});
+
+		const presets = this.plugin.settings.imageStylePresets;
+
+		for (let i = 0; i < presets.length; i++) {
+			const preset = presets[i]!;
+			const idx = i;
+			const wrapper = containerEl.createDiv({cls: "ai-custom-action-item"});
+
+			new Setting(wrapper)
+				.setName(`Style: ${preset.name || "(unnamed)"}`)
+				.addText(text => text
+					.setPlaceholder("Preset name")
+					.setValue(preset.name)
+					.onChange(async (value) => {
+						preset.name = value;
+						preset.id = value.toLowerCase().replace(/\s+/g, "-") || ("style-" + Date.now());
+						await this.plugin.saveSettings();
+					}))
+				.addExtraButton(btn => btn
+					.setIcon("trash")
+					.setTooltip("Delete preset")
+					.onClick(async () => {
+						presets.splice(idx, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					}));
+
+			new Setting(wrapper)
+				.setName("Style prompt")
+				.setDesc("Keywords appended to your image description")
+				.addTextArea((text: TextAreaComponent) => {
+					text
+						.setPlaceholder("e.g. watercolor painting style, soft colors")
+						.setValue(preset.prompt)
+						.onChange(async (value) => {
+							preset.prompt = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.rows = 2;
+					text.inputEl.cols = 50;
+				});
+		}
+
+		new Setting(containerEl)
+			.addButton(btn => btn
+				.setButtonText("Add style")
+				.setCta()
+				.onClick(async () => {
+					presets.push({
+						id: "style-" + Date.now(),
+						name: "",
+						prompt: "",
+					});
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+	}
+
+	private renderSizePresets(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Size presets").setHeading();
+
+		containerEl.createEl("p", {
+			text: "Size presets define available image dimensions when generating images.",
+			cls: "setting-item-description",
+		});
+
+		const presets = this.plugin.settings.imageSizePresets;
+
+		for (let i = 0; i < presets.length; i++) {
+			const preset = presets[i]!;
+			const idx = i;
+
+			new Setting(containerEl)
+				.setName(`Size: ${preset.name || "(unnamed)"}`)
+				.addText(text => text
+					.setPlaceholder("Display name")
+					.setValue(preset.name)
+					.onChange(async (value) => {
+						preset.name = value;
+						await this.plugin.saveSettings();
+					}))
+				.addText(text => text
+					.setPlaceholder("1024x1024")
+					.setValue(preset.value)
+					.onChange(async (value) => {
+						preset.value = value;
+						preset.id = value.toLowerCase().replace(/[^a-z0-9]/g, "-") || ("size-" + Date.now());
+						await this.plugin.saveSettings();
+					}))
+				.addExtraButton(btn => btn
+					.setIcon("trash")
+					.setTooltip("Delete preset")
+					.onClick(async () => {
+						presets.splice(idx, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					}));
+		}
+
+		new Setting(containerEl)
+			.addButton(btn => btn
+				.setButtonText("Add size")
+				.setCta()
+				.onClick(async () => {
+					presets.push({
+						id: "size-" + Date.now(),
+						name: "",
+						value: "",
+					});
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+	}
+
+	private renderBehaviorSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Behavior").setHeading();
+
+		new Setting(containerEl)
+			.setName("System prompt")
+			.setDesc("Global system prompt sent with every request")
+			.addTextArea((text: TextAreaComponent) => {
+				text
+					.setPlaceholder("You are a helpful assistant...")
+					.setValue(this.plugin.settings.systemPrompt)
+					.onChange(async (value) => {
+						this.plugin.settings.systemPrompt = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+				text.inputEl.cols = 50;
+			});
+
+		new Setting(containerEl)
+			.setName("Slash trigger")
+			.setDesc("Character that triggers the AI command menu at the beginning of a line")
+			.addText(text => text
+				.setPlaceholder("/")
+				.setValue(this.plugin.settings.slashTrigger)
+				.onChange(async (value) => {
+					if (value.length > 0) {
+						this.plugin.settings.slashTrigger = value;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName("Streaming output")
+			.setDesc("Show AI response as it's being generated")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.streamingEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.streamingEnabled = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Default insert mode")
+			.setDesc("How to insert AI output when text is selected")
+			.addDropdown(dropdown => dropdown
+				.addOption("replace", "Replace selection")
+				.addOption("cursor", "Insert at cursor")
+				.setValue(this.plugin.settings.insertMode)
+				.onChange(async (value) => {
+					this.plugin.settings.insertMode = value as "cursor" | "replace";
+					await this.plugin.saveSettings();
+				}));
+	}
+
+	private renderCustomActionsSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Custom actions").setHeading();
+
+		containerEl.createEl("p", {
+			text: "Add custom AI actions that appear in the slash menu and command palette.",
+			cls: "setting-item-description",
+		});
+
+		const actions = this.plugin.settings.customActions;
+
+		for (let i = 0; i < actions.length; i++) {
+			const action = actions[i]!;
+			const idx = i;
+			const wrapper = containerEl.createDiv({cls: "ai-custom-action-item"});
+
+			new Setting(wrapper)
+				.setName(`Action: ${action.name || "(unnamed)"}`)
+				.addText(text => text
+					.setPlaceholder("Action name")
+					.setValue(action.name)
+					.onChange(async (value) => {
+						action.name = value;
+						action.id = "custom-" + value.toLowerCase().replace(/\s+/g, "-");
+						await this.plugin.saveSettings();
+					}))
+				.addExtraButton(btn => btn
+					.setIcon("trash")
+					.setTooltip("Delete action")
+					.onClick(async () => {
+						actions.splice(idx, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					}));
+
+			new Setting(wrapper)
+				.setName("Prompt template")
+				.setDesc("Use {{selection}} for selected text, {{input}} for user input")
+				.addTextArea((text: TextAreaComponent) => {
+					text
+						.setPlaceholder("Translate the following text to English:\n\n{{selection}}")
+						.setValue(action.promptTemplate)
+						.onChange(async (value) => {
+							action.promptTemplate = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.rows = 3;
+					text.inputEl.cols = 50;
+				});
+		}
+
+		new Setting(containerEl)
+			.addButton(btn => btn
+				.setButtonText("Add action")
+				.setCta()
+				.onClick(async () => {
+					actions.push({
+						id: "custom-" + Date.now(),
+						name: "",
+						promptTemplate: "",
+					});
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+	}
+}
