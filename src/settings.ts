@@ -112,7 +112,6 @@ export class AISettingTab extends PluginSettingTab {
 			this.renderGeminiSection(containerEl);
 		}
 
-		this.renderModelSection(containerEl);
 		this.renderImageSection(containerEl);
 		this.renderBehaviorSection(containerEl);
 		this.renderCustomActionsSection(containerEl);
@@ -210,85 +209,6 @@ export class AISettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl)
-			.setName("Top k")
-			.setDesc("Number of top tokens to sample from (1-100)")
-			.addSlider(slider => slider
-				.setLimits(1, 100, 1)
-				.setValue(this.plugin.settings.geminiTopK)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.geminiTopK = value;
-					await this.plugin.saveSettings();
-				}));
-	}
-
-	private renderModelSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Model parameters").setHeading();
-
-		new Setting(containerEl)
-			.setName("Temperature")
-			.setDesc("Controls randomness (0 = deterministic, 2 = creative)")
-			.addSlider(slider => slider
-				.setLimits(0, 2, 0.1)
-				.setValue(this.plugin.settings.temperature)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.temperature = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName("Max tokens")
-			.setDesc("Maximum number of tokens in the response")
-			.addText(text => text
-				.setPlaceholder("2048")
-				.setValue(String(this.plugin.settings.maxTokens))
-				.onChange(async (value) => {
-					const num = parseInt(value, 10);
-					if (!isNaN(num) && num > 0) {
-						this.plugin.settings.maxTokens = num;
-						await this.plugin.saveSettings();
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName("Top p")
-			.setDesc("Nucleus sampling threshold")
-			.addSlider(slider => slider
-				.setLimits(0, 1, 0.05)
-				.setValue(this.plugin.settings.topP)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.topP = value;
-					await this.plugin.saveSettings();
-				}));
-
-		if (this.plugin.settings.provider === "openai") {
-			new Setting(containerEl)
-				.setName("Frequency penalty")
-				.setDesc("Penalize repeated tokens (-2 to 2)")
-				.addSlider(slider => slider
-					.setLimits(-2, 2, 0.1)
-					.setValue(this.plugin.settings.frequencyPenalty)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.frequencyPenalty = value;
-						await this.plugin.saveSettings();
-					}));
-
-			new Setting(containerEl)
-				.setName("Presence penalty")
-				.setDesc("Penalize tokens already present (-2 to 2)")
-				.addSlider(slider => slider
-					.setLimits(-2, 2, 0.1)
-					.setValue(this.plugin.settings.presencePenalty)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.presencePenalty = value;
-						await this.plugin.saveSettings();
-					}));
-		}
 	}
 
 	private renderImageSection(containerEl: HTMLElement): void {

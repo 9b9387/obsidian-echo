@@ -57,6 +57,13 @@ export default class AIPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData() as Partial<AIPluginSettings>,
 		);
+		// Model tuning parameters are intentionally fixed to defaults.
+		this.settings.temperature = DEFAULT_SETTINGS.temperature;
+		this.settings.maxTokens = DEFAULT_SETTINGS.maxTokens;
+		this.settings.topP = DEFAULT_SETTINGS.topP;
+		this.settings.frequencyPenalty = DEFAULT_SETTINGS.frequencyPenalty;
+		this.settings.presencePenalty = DEFAULT_SETTINGS.presencePenalty;
+		this.settings.geminiTopK = DEFAULT_SETTINGS.geminiTopK;
 	}
 
 	async saveSettings() {
