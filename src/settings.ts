@@ -1,3 +1,4 @@
+import * as Obsidian from "obsidian";
 import {App, PluginSettingTab, Setting, TextAreaComponent} from "obsidian";
 import type AIPlugin from "./main";
 import type {CustomAction, ImageStylePreset, ImageSizePreset} from "./types";
@@ -8,10 +9,12 @@ export interface AIPluginSettings {
 	provider: LLMProviderType;
 	// OpenAI-compatible
 	apiKey: string;
+	openaiApiKeySecretName: string;
 	baseUrl: string;
 	model: string;
 	// Gemini
 	geminiApiKey: string;
+	geminiApiKeySecretName: string;
 	geminiBaseUrl: string;
 	geminiModel: string;
 	geminiTopK: number;
@@ -38,9 +41,11 @@ export interface AIPluginSettings {
 export const DEFAULT_SETTINGS: AIPluginSettings = {
 	provider: "openai",
 	apiKey: "",
+	openaiApiKeySecretName: "",
 	baseUrl: "https://api.openai.com/v1",
 	model: "gpt-4o-mini",
 	geminiApiKey: "",
+	geminiApiKeySecretName: "",
 	geminiBaseUrl: "https://generativelanguage.googleapis.com",
 	geminiModel: "gemini-2.5-flash",
 	geminiTopK: 40,
@@ -137,20 +142,7 @@ export class AISettingTab extends PluginSettingTab {
 	private renderOpenAISection(containerEl: HTMLElement): void {
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		new Setting(containerEl).setName("OpenAI-compatible configuration").setHeading();
-
-		new Setting(containerEl)
-			.setName("API key")
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			.setDesc("Your OpenAI-compatible API key")
-			.addText(text => text
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				.setPlaceholder("sk-...")
-				.setValue(this.plugin.settings.apiKey)
-				.then(t => t.inputEl.type = "password")
-				.onChange(async (value) => {
-					this.plugin.settings.apiKey = value;
-					await this.plugin.saveSettings();
-				}));
+		this.renderApiKeyInfo(containerEl, "OpenAI API key", "openai");
 
 		new Setting(containerEl)
 			.setName("Base URL")
@@ -181,20 +173,7 @@ export class AISettingTab extends PluginSettingTab {
 	private renderGeminiSection(containerEl: HTMLElement): void {
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		new Setting(containerEl).setName("Google Gemini configuration").setHeading();
-
-		new Setting(containerEl)
-			.setName("API key")
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			.setDesc("Your Google AI Studio API key")
-			.addText(text => text
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				.setPlaceholder("AIza...")
-				.setValue(this.plugin.settings.geminiApiKey)
-				.then(t => t.inputEl.type = "password")
-				.onChange(async (value) => {
-					this.plugin.settings.geminiApiKey = value;
-					await this.plugin.saveSettings();
-				}));
+		this.renderApiKeyInfo(containerEl, "Gemini API key", "gemini");
 
 		new Setting(containerEl)
 			.setName("Model")
@@ -209,6 +188,58 @@ export class AISettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+	}
+
+	private renderApiKeyInfo(containerEl: HTMLElement, title: string, provider: "openai" | "gemini"): void {
+		new Setting(containerEl)
+			.setName(title)
+			.setDesc("Select or create a secret in Obsidian Secret Storage")
+			.then(setting => {
+				this.addSecretSelector(setting, provider);
+			});
+	}
+
+	private addSecretSelector(setting: Setting, provider: "openai" | "gemini"): void {
+		type SecretComponentLike = {
+			setValue(value: string): SecretComponentLike;
+			onChange(callback: (value: string) => void): SecretComponentLike;
+		};
+
+		const settingWithComponent = setting as unknown as {
+			addComponent?: (cb: (el: HTMLElement) => SecretComponentLike) => Setting;
+			controlEl: HTMLElement;
+		};
+
+		const secretName = provider === "openai"
+			? this.plugin.settings.openaiApiKeySecretName
+			: this.plugin.settings.geminiApiKeySecretName;
+
+		const SecretComponentCtor = (Obsidian as unknown as {
+			SecretComponent?: new (app: App, containerEl: HTMLElement) => SecretComponentLike;
+		}).SecretComponent;
+
+		if (!settingWithComponent.addComponent || !SecretComponentCtor) {
+			settingWithComponent.controlEl.createEl("p", {
+				text: "Secret selector is unavailable in this Obsidian build.",
+				cls: "setting-item-description",
+			});
+			return;
+		}
+
+		settingWithComponent.addComponent((el: HTMLElement) => {
+			const component = new SecretComponentCtor(this.app, el);
+			component
+				.setValue(secretName)
+				.onChange(async (value: string) => {
+					if (provider === "openai") {
+						this.plugin.settings.openaiApiKeySecretName = value ?? "";
+					} else {
+						this.plugin.settings.geminiApiKeySecretName = value ?? "";
+					}
+					await this.plugin.saveSettings();
+				});
+			return component;
+		});
 	}
 
 	private renderImageSection(containerEl: HTMLElement): void {

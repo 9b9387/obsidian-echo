@@ -15,6 +15,10 @@ import {PromptModal} from "./ui/prompt-modal";
 import {ImagePromptModal} from "./ui/image-prompt-modal";
 import type {AIAction, ChatMessage} from "./types";
 
+type SecretStorageLike = {
+	getSecret(id: string): string | null;
+};
+
 export default class AIPlugin extends Plugin {
 	settings: AIPluginSettings;
 	client: LLMProvider;
@@ -26,6 +30,10 @@ export default class AIPlugin extends Plugin {
 	private activeInlineAsk: InlineAskInput | null = null;
 
 	async onload() {
+		if (!this.hasSecretStorage()) {
+			throw new Error("Obsidian SecretStorage is required. Please use Obsidian 1.11.4 or newer.");
+		}
+
 		await this.loadSettings();
 		this.client = this.createClient();
 		this.imageGenerator = new ImageGenerator(this.settings);
@@ -57,6 +65,8 @@ export default class AIPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData() as Partial<AIPluginSettings>,
 		);
+		this.hydrateApiKeysFromSecretStorage();
+		await this.saveData(this.getPersistedSettings());
 		// Model tuning parameters are intentionally fixed to defaults.
 		this.settings.temperature = DEFAULT_SETTINGS.temperature;
 		this.settings.maxTokens = DEFAULT_SETTINGS.maxTokens;
@@ -67,10 +77,41 @@ export default class AIPlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
+		this.hydrateApiKeysFromSecretStorage();
+		await this.saveData(this.getPersistedSettings());
 		this.client = this.createClient();
 		this.imageGenerator.updateSettings(this.settings);
 		this.selectionToolbar?.rebuild();
+	}
+
+	hasSecretStorage(): boolean {
+		return this.getSecretStorage() !== null;
+	}
+
+	private getPersistedSettings(): AIPluginSettings {
+		return {
+			...this.settings,
+			apiKey: "",
+			geminiApiKey: "",
+		};
+	}
+
+	private getSecretStorage(): SecretStorageLike | null {
+		const appWithSecretStorage = this.app as typeof this.app & {secretStorage?: SecretStorageLike};
+		return appWithSecretStorage.secretStorage ?? null;
+	}
+
+	private hydrateApiKeysFromSecretStorage(): void {
+		const storage = this.getSecretStorage();
+		if (!storage) {
+			throw new Error("Obsidian SecretStorage is required. Please use Obsidian 1.11.4 or newer.");
+		}
+
+		const openAiSecretName = this.settings.openaiApiKeySecretName?.trim();
+		const geminiSecretName = this.settings.geminiApiKeySecretName?.trim();
+
+		this.settings.apiKey = openAiSecretName ? (storage.getSecret(openAiSecretName) ?? "") : "";
+		this.settings.geminiApiKey = geminiSecretName ? (storage.getSecret(geminiSecretName) ?? "") : "";
 	}
 
 	private createClient(): LLMProvider {
@@ -89,7 +130,7 @@ export default class AIPlugin extends Plugin {
 			? this.settings.geminiApiKey
 			: this.settings.apiKey;
 		if (!hasKey) {
-			new Notice("Please set your API key in settings.");
+			new Notice("Missing API key secret. Choose a Secret Storage entry in plugin settings.");
 			return;
 		}
 

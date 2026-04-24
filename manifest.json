@@ -2,7 +2,7 @@
 	"id": "obsidian-echo",
 	"name": "Echo",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
+	"minAppVersion": "1.11.4",
 	"description": "AI-powered writing assistant with inline write, selection actions, image generation, and streaming output. Supports OpenAI and Gemini.",
 	"author": "9b9387",
 	"authorUrl": "https://github.com/9b9387",
