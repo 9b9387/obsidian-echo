@@ -119,7 +119,7 @@ export class AISettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		const modelBox = containerEl.createDiv({cls: "ai-settings-box"});
-		modelBox.createEl("h3", {text: "Model settings"});
+		new Setting(modelBox).setName("Model settings").setHeading();
 		const textSection = this.createModelAccordion(modelBox, "Text generation model", "text");
 		this.renderTextModelSection(textSection);
 		const imageSection = this.createModelAccordion(modelBox, "Image generation model", "image");
@@ -381,7 +381,7 @@ export class AISettingTab extends PluginSettingTab {
 
 	private renderCustomActionsSection(containerEl: HTMLElement): void {
 		const actionBox = containerEl.createDiv({cls: "ai-settings-box"});
-		actionBox.createEl("h3", {text: "Actions Config"});
+		new Setting(actionBox).setName("Actions config").setHeading();
 
 		const actions = this.plugin.settings.customActions;
 

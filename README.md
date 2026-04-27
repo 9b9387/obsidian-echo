@@ -79,15 +79,9 @@ Copy `main.js`, `styles.css`, and `manifest.json` to your vault's `.obsidian/plu
 
 Open **Settings → Obsidian Echo** to configure:
 
-- **Provider** — switch between OpenAI-compatible and Gemini
-- **API Key / Base URL / Model** — per-provider configuration
-- **Model Parameters** — temperature, max tokens, top P, frequency/presence penalty
-- **Image Generation** — model, default size, save folder, style presets, size presets
-- **System Prompt** — global system instruction appended to all requests
-- **Slash Trigger** — customize the trigger character (default: `/`)
-- **Streaming** — enable/disable streaming output
-- **Insert Mode** — cursor (insert at cursor) or replace (replace selection)
-- **Custom Actions** — create your own prompt-based actions
+- **Text generation model** — switch between OpenAI-compatible and Gemini; set API key secret, base URL, model ID, and system prompt
+- **Image generation model** — same provider options; set image model ID, save folder, and system prompt
+- **Actions config** — create, edit, or delete AI actions with custom prompt templates, generation type (text/image), trigger method (slash / toolbar / both), output mode, and icon
 
 ## Development
 

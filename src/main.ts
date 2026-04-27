@@ -1,4 +1,4 @@
-import {App, Editor, MarkdownView, Menu, Notice, Plugin, TFolder} from "obsidian";
+import {App, Editor, MarkdownView, Menu, Notice, Plugin, TFolder, normalizePath} from "obsidian";
 import {AIPluginSettings, AISettingTab, DEFAULT_SETTINGS} from "./settings";
 import type {LLMProvider} from "./ai/provider";
 import {OpenAIClient} from "./ai/openai-client";
@@ -318,7 +318,7 @@ export default class AIPlugin extends Plugin {
 				: prompt;
 			const result = await this.imageGenerator.generate(finalPrompt);
 
-			const folder = this.settings.imageSaveFolder.replace(/\/+$/, "");
+			const folder = normalizePath(this.settings.imageSaveFolder);
 			const existing = this.app.vault.getAbstractFileByPath(folder);
 			if (!existing) {
 				await this.app.vault.createFolder(folder);
