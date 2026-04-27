@@ -1,17 +1,6 @@
 import type {AIAction, CustomAction} from "../types";
 
 export const BUILTIN_ACTIONS: AIAction[] = [
-	{
-		id: "generate-image",
-		name: "Generate image",
-		description: "Generate an image from text description",
-		promptTemplate: "{{input}}\n\n{{selection}}",
-		needsInput: true,
-		usesSelection: true,
-		icon: "image",
-		outputMode: "nextLine",
-		triggerMode: "toolbar",
-	},
 ];
 
 export function customActionToAIAction(ca: CustomAction): AIAction {
@@ -21,6 +10,7 @@ export function customActionToAIAction(ca: CustomAction): AIAction {
 		name: ca.name,
 		description: `Custom: ${ca.name}`,
 		promptTemplate: template,
+		generationType: ca.generationType,
 		needsInput: template.includes("{{input}}"),
 		usesSelection: template.includes("{{selection}}"),
 		icon: ca.icon || "zap",

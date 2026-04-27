@@ -23,7 +23,7 @@ export class SlashSuggest extends EditorSuggest<AIAction> {
 		editor: Editor,
 		_file: TFile | null,
 	): EditorSuggestTriggerInfo | null {
-		const trigger = this.plugin.settings.slashTrigger;
+		const trigger = "/";
 		const line = editor.getLine(cursor.line);
 		const beforeCursor = line.slice(0, cursor.ch);
 

@@ -38,7 +38,7 @@ export class OpenAIClient implements LLMProvider {
 	}
 
 	private buildUrl(): string {
-		const base = this.settings.baseUrl.replace(/\/+$/, "");
+		const base = this.settings.textOpenaiBaseUrl.replace(/\/+$/, "");
 		return `${base}/chat/completions`;
 	}
 
@@ -46,15 +46,15 @@ export class OpenAIClient implements LLMProvider {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 		};
-		if (this.settings.apiKey) {
-			headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
+		if (this.settings.textOpenaiApiKey) {
+			headers["Authorization"] = `Bearer ${this.settings.textOpenaiApiKey}`;
 		}
 		return headers;
 	}
 
 	private buildBody(messages: ChatMessage[]): Record<string, unknown> {
 		return {
-			model: this.settings.model,
+			model: this.settings.textOpenaiModel,
 			messages,
 			temperature: this.settings.temperature,
 			max_tokens: this.settings.maxTokens,

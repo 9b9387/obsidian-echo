@@ -35,10 +35,10 @@ export class GeminiClient implements LLMProvider {
 	}
 
 	private buildUrl(): string {
-		const base = this.settings.geminiBaseUrl.replace(/\/+$/, "");
-		const model = this.settings.geminiModel;
+		const base = this.settings.textGeminiBaseUrl.replace(/\/+$/, "");
+		const model = this.settings.textGeminiModel;
 		const action = "generateContent";
-		const params = new URLSearchParams({key: this.settings.geminiApiKey});
+		const params = new URLSearchParams({key: this.settings.textGeminiApiKey});
 		return `${base}/v1beta/models/${model}:${action}?${params.toString()}`;
 	}
 
@@ -60,7 +60,7 @@ export class GeminiClient implements LLMProvider {
 				temperature: this.settings.temperature,
 				maxOutputTokens: this.settings.maxTokens,
 				topP: this.settings.topP,
-				topK: this.settings.geminiTopK,
+				topK: this.settings.textGeminiTopK,
 			},
 		};
 

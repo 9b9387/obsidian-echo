@@ -368,8 +368,51 @@
 
 /* Custom actions in settings */
 .ai-custom-action-item {
+	padding: 6px 0 8px 0;
+}
+
+/* Model settings box */
+.ai-settings-box {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 12px 14px;
+	margin-bottom: 16px;
+	background: var(--background-secondary-alt);
+}
+
+.ai-settings-box h3 {
+	margin: 0 0 8px 0;
+}
+
+.ai-settings-accordion {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 8px 12px;
-	margin-bottom: 12px;
+	background: var(--background-primary);
+	margin-top: 10px;
+}
+
+.ai-settings-accordion-summary {
+	cursor: pointer;
+	padding: 10px 12px;
+	font-weight: 600;
+	list-style: none;
+}
+
+.ai-settings-accordion-summary::-webkit-details-marker {
+	display: none;
+}
+
+.ai-settings-accordion-summary::before {
+	content: "▸";
+	display: inline-block;
+	margin-right: 8px;
+	color: var(--text-muted);
+}
+
+.ai-settings-accordion[open] .ai-settings-accordion-summary::before {
+	content: "▾";
+}
+
+.ai-settings-accordion-content {
+	padding: 0 12px 6px 12px;
 }

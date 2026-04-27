@@ -1,5 +1,4 @@
 import {App, Modal, Setting} from "obsidian";
-import type {ImageStylePreset, ImageSizePreset} from "../types";
 
 const SELECTION_PREVIEW_LIMIT = 200;
 
@@ -13,34 +12,21 @@ function cleanSelection(value: unknown): string {
 
 export interface ImagePromptResult {
 	prompt: string;
-	stylePrompt: string;
-	sizeValue: string;
 }
 
 export class ImagePromptModal extends Modal {
 	private result: ImagePromptResult | null = null;
 	private resolvePromise: ((value: ImagePromptResult | null) => void) | null = null;
 	private _selectionText: string;
-	private stylePresets: ImageStylePreset[];
-	private sizePresets: ImageSizePreset[];
-	private selectedStyle: string;
-	private selectedSize: string;
 
 	constructor(
 		app: App,
 		opts: {
 			selection?: unknown;
-			stylePresets: ImageStylePreset[];
-			sizePresets: ImageSizePreset[];
-			defaultSize?: string;
 		},
 	) {
 		super(app);
 		this._selectionText = cleanSelection(opts.selection);
-		this.stylePresets = Array.isArray(opts.stylePresets) ? opts.stylePresets : [];
-		this.sizePresets = Array.isArray(opts.sizePresets) ? opts.sizePresets : [];
-		this.selectedStyle = this.stylePresets[0]?.prompt ?? "";
-		this.selectedSize = opts.defaultSize ?? this.sizePresets[0]?.value ?? "1024x1024";
 	}
 
 	onOpen(): void {
@@ -61,33 +47,7 @@ export class ImagePromptModal extends Modal {
 			pre.textContent = displayText;
 		}
 
-		if (this.stylePresets.length > 0) {
-			new Setting(contentEl)
-				.setName("Style")
-				.addDropdown(dropdown => {
-					for (const preset of this.stylePresets) {
-						dropdown.addOption(preset.prompt, preset.name);
-					}
-					dropdown.setValue(this.selectedStyle);
-					dropdown.onChange((value) => {
-						this.selectedStyle = value;
-					});
-				});
-		}
-
-		if (this.sizePresets.length > 0) {
-			new Setting(contentEl)
-				.setName("Size")
-				.addDropdown(dropdown => {
-					for (const preset of this.sizePresets) {
-						dropdown.addOption(preset.value, preset.name);
-					}
-					dropdown.setValue(this.selectedSize);
-					dropdown.onChange((value) => {
-						this.selectedSize = value;
-					});
-				});
-		}
+		new Setting(contentEl).setName("Prompt").setDesc("Describe the image you want to generate");
 
 		const textarea = contentEl.createEl("textarea", {
 			cls: "ai-prompt-input",
@@ -129,8 +89,6 @@ export class ImagePromptModal extends Modal {
 		if (!trimmed) return;
 		this.result = {
 			prompt: trimmed,
-			stylePrompt: this.selectedStyle,
-			sizeValue: this.selectedSize,
 		};
 		this.close();
 	}

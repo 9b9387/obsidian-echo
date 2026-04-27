@@ -1,33 +1,47 @@
-import {Editor, MarkdownView, Menu, Notice, Plugin, TFolder} from "obsidian";
+import {App, Editor, MarkdownView, Menu, Notice, Plugin, TFolder} from "obsidian";
 import {AIPluginSettings, AISettingTab, DEFAULT_SETTINGS} from "./settings";
 import type {LLMProvider} from "./ai/provider";
 import {OpenAIClient} from "./ai/openai-client";
 import {GeminiClient} from "./ai/gemini-client";
 import {ImageGenerator} from "./ai/image-generator";
-import {buildPrompt, BUILTIN_ACTIONS, getAllActions} from "./ai/actions";
+import {buildPrompt, getAllActions} from "./ai/actions";
 import {buildEditorContext, formatContextPrompt, INLINE_ASK_SYSTEM_PROMPT} from "./ai/context-builder";
 import {SlashSuggest} from "./ui/slash-suggest";
 import {SelectionToolbar} from "./ui/selection-toolbar";
 import {GeneratingIndicator} from "./ui/generating-indicator";
 import {InlineAskInput} from "./ui/inline-ask";
 import {PromptModal} from "./ui/prompt-modal";
-
-import {ImagePromptModal} from "./ui/image-prompt-modal";
-import type {AIAction, ChatMessage} from "./types";
+import type {AIAction, ChatMessage, GenerationType} from "./types";
 
 type SecretStorageLike = {
 	getSecret(id: string): string | null;
+};
+
+type GenerationContext = {
+	editor: Editor;
+	action: AIAction;
+	promptText: string;
+	startPos: {line: number; ch: number};
 };
 
 export default class AIPlugin extends Plugin {
 	settings: AIPluginSettings;
 	client: LLMProvider;
 	imageGenerator: ImageGenerator;
+	private generationHandlers: Record<GenerationType, (ctx: GenerationContext) => Promise<void>>;
 	cachedSelection = "";
 	private statusBarEl: HTMLElement | null = null;
 	private selectionToolbar: SelectionToolbar | null = null;
 	private generatingIndicator: GeneratingIndicator | null = null;
 	private activeInlineAsk: InlineAskInput | null = null;
+
+	constructor(app: App, manifest: Plugin["manifest"]) {
+		super(app, manifest);
+		this.generationHandlers = {
+			text: async (ctx) => this.executeTextGeneration(ctx),
+			image: async (ctx) => this.executeImageGeneration(ctx.editor, ctx.promptText, ctx.startPos),
+		};
+	}
 
 	async onload() {
 		if (!this.hasSecretStorage()) {
@@ -73,7 +87,7 @@ export default class AIPlugin extends Plugin {
 		this.settings.topP = DEFAULT_SETTINGS.topP;
 		this.settings.frequencyPenalty = DEFAULT_SETTINGS.frequencyPenalty;
 		this.settings.presencePenalty = DEFAULT_SETTINGS.presencePenalty;
-		this.settings.geminiTopK = DEFAULT_SETTINGS.geminiTopK;
+		this.settings.textGeminiTopK = DEFAULT_SETTINGS.textGeminiTopK;
 	}
 
 	async saveSettings() {
@@ -91,8 +105,10 @@ export default class AIPlugin extends Plugin {
 	private getPersistedSettings(): AIPluginSettings {
 		return {
 			...this.settings,
-			apiKey: "",
-			geminiApiKey: "",
+			textOpenaiApiKey: "",
+			textGeminiApiKey: "",
+			imageOpenaiApiKey: "",
+			imageGeminiApiKey: "",
 		};
 	}
 
@@ -107,15 +123,19 @@ export default class AIPlugin extends Plugin {
 			throw new Error("Obsidian SecretStorage is required. Please use Obsidian 1.11.4 or newer.");
 		}
 
-		const openAiSecretName = this.settings.openaiApiKeySecretName?.trim();
-		const geminiSecretName = this.settings.geminiApiKeySecretName?.trim();
+		const textOpenAiSecret = this.settings.textOpenaiApiKeySecretName?.trim();
+		const textGeminiSecret = this.settings.textGeminiApiKeySecretName?.trim();
+		const imageOpenAiSecret = this.settings.imageOpenaiApiKeySecretName?.trim();
+		const imageGeminiSecret = this.settings.imageGeminiApiKeySecretName?.trim();
 
-		this.settings.apiKey = openAiSecretName ? (storage.getSecret(openAiSecretName) ?? "") : "";
-		this.settings.geminiApiKey = geminiSecretName ? (storage.getSecret(geminiSecretName) ?? "") : "";
+		this.settings.textOpenaiApiKey = textOpenAiSecret ? (storage.getSecret(textOpenAiSecret) ?? "") : "";
+		this.settings.textGeminiApiKey = textGeminiSecret ? (storage.getSecret(textGeminiSecret) ?? "") : "";
+		this.settings.imageOpenaiApiKey = imageOpenAiSecret ? (storage.getSecret(imageOpenAiSecret) ?? "") : "";
+		this.settings.imageGeminiApiKey = imageGeminiSecret ? (storage.getSecret(imageGeminiSecret) ?? "") : "";
 	}
 
 	private createClient(): LLMProvider {
-		if (this.settings.provider === "gemini") {
+		if (this.settings.textProvider === "gemini") {
 			return new GeminiClient(this.settings);
 		}
 		return new OpenAIClient(this.settings);
@@ -126,37 +146,8 @@ export default class AIPlugin extends Plugin {
 			selection = "";
 		}
 
-		const hasKey = this.settings.provider === "gemini"
-			? this.settings.geminiApiKey
-			: this.settings.apiKey;
-		if (!hasKey) {
-			new Notice("Missing API key secret. Choose a Secret Storage entry in plugin settings.");
-			return;
-		}
-
 		if (!selection && action.usesSelection) {
 			selection = this.consumeCachedSelection();
-		}
-
-		if (action.id === "generate-image") {
-			const modal = new ImagePromptModal(this.app, {
-				selection: String(selection),
-				stylePresets: this.settings.imageStylePresets,
-				sizePresets: this.settings.imageSizePresets,
-				defaultSize: this.settings.imageSize,
-			});
-			const imgResult = await modal.waitForInput();
-			if (!imgResult) return;
-
-			let finalPrompt = imgResult.prompt;
-			if (selection) {
-				finalPrompt = `${finalPrompt}\n\nContext: ${selection}`;
-			}
-			if (imgResult.stylePrompt) {
-				finalPrompt = `${finalPrompt}\n\nStyle: ${imgResult.stylePrompt}`;
-			}
-			await this.executeImageGeneration(editor, finalPrompt, imgResult.sizeValue);
-			return;
 		}
 
 		let userInput = "";
@@ -228,29 +219,65 @@ export default class AIPlugin extends Plugin {
 			full: fullContext
 		});
 
-		if (this.settings.systemPrompt) {
-			messages.push({role: "system", content: this.settings.systemPrompt});
+		const generationType = action.generationType;
+		const hasKey = generationType === "image"
+			? this.hasImageApiKey()
+			: this.hasTextApiKey();
+		if (!hasKey) {
+			new Notice(`Missing ${generationType} API key secret. Configure it in model settings.`);
+			return;
 		}
 
-		messages.push({role: "user", content: promptText});
+		const startPos = this.resolveInsertPosition(
+			editor,
+			generationType === "image" ? "nextLine" : action.outputMode,
+		);
+		await this.generationHandlers[generationType]({
+			editor,
+			action,
+			promptText,
+			startPos,
+		});
+	}
 
-		let startPos;
+	private hasTextApiKey(): boolean {
+		return this.settings.textProvider === "gemini"
+			? Boolean(this.settings.textGeminiApiKey)
+			: Boolean(this.settings.textOpenaiApiKey);
+	}
+
+	private hasImageApiKey(): boolean {
+		return this.settings.imageProvider === "gemini"
+			? Boolean(this.settings.imageGeminiApiKey)
+			: Boolean(this.settings.imageOpenaiApiKey);
+	}
+
+	private async executeTextGeneration(ctx: GenerationContext): Promise<void> {
+		const messages: ChatMessage[] = [];
+		if (this.settings.textSystemPrompt) {
+			messages.push({role: "system", content: this.settings.textSystemPrompt});
+		}
+		messages.push({role: "user", content: ctx.promptText});
+		await this.blockGenerate(ctx.editor, ctx.startPos, messages);
+	}
+
+	private resolveInsertPosition(
+		editor: Editor,
+		outputMode: "replace" | "cursor" | "nextLine",
+	): {line: number; ch: number} {
 		const from = editor.getCursor("from");
 		const to = editor.getCursor("to");
-
-		if (action.outputMode === "replace") {
+		if (outputMode === "replace") {
 			editor.replaceRange("", from, to);
-			startPos = from;
-		} else if (action.outputMode === "nextLine") {
+			return from;
+		}
+		if (outputMode === "nextLine") {
 			const cursorLine = editor.getLine(to.line);
 			const insertPos = {line: to.line, ch: cursorLine.length};
 			editor.replaceRange("\n\n", insertPos);
-			startPos = {line: insertPos.line + 2, ch: 0};
-		} else {
-			startPos = to;
+			return {line: insertPos.line + 2, ch: 0};
 		}
-
-		await this.blockGenerate(editor, startPos, messages);
+		return to;
 	}
 
 	private async blockGenerate(
@@ -276,13 +303,20 @@ export default class AIPlugin extends Plugin {
 		}
 	}
 
-	private async executeImageGeneration(editor: Editor, prompt: string, sizeValue?: string): Promise<void> {
+	private async executeImageGeneration(
+		editor: Editor,
+		prompt: string,
+		insertPos?: {line: number; ch: number},
+	): Promise<void> {
 		this.setStatus("Generating image...");
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		this.generatingIndicator?.show(view, editor, editor.getCursor());
 
 		try {
-			const result = await this.imageGenerator.generate(prompt, sizeValue);
+			const finalPrompt = this.settings.imageSystemPrompt
+				? `${this.settings.imageSystemPrompt}\n\n${prompt}`
+				: prompt;
+			const result = await this.imageGenerator.generate(finalPrompt);
 
 			const folder = this.settings.imageSaveFolder.replace(/\/+$/, "");
 			const existing = this.app.vault.getAbstractFileByPath(folder);
@@ -299,8 +333,8 @@ export default class AIPlugin extends Plugin {
 			await this.app.vault.createBinary(filePath, result.data);
 
 			const markdownLink = `![](${filePath})`;
-			const cursor = editor.getCursor();
-			editor.replaceRange(`${markdownLink}\n`, cursor);
+			const targetPos = insertPos ?? editor.getCursor();
+			editor.replaceRange(`${markdownLink}\n`, targetPos);
 
 			this.setStatus("Done");
 			this.generatingIndicator?.showDone();

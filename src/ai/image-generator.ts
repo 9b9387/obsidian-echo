@@ -30,6 +30,7 @@ export interface ImageResult {
 
 export class ImageGenerator {
 	private settings: AIPluginSettings;
+	private static readonly DEFAULT_OPENAI_IMAGE_SIZE = "1024x1024";
 
 	constructor(settings: AIPluginSettings) {
 		this.settings = settings;
@@ -39,15 +40,15 @@ export class ImageGenerator {
 		this.settings = settings;
 	}
 
-	async generate(prompt: string, sizeValue?: string): Promise<ImageResult> {
-		if (this.settings.provider === "gemini") {
+	async generate(prompt: string): Promise<ImageResult> {
+		if (this.settings.imageProvider === "gemini") {
 			return this.generateWithGemini(prompt);
 		}
-		return this.generateWithDalle(prompt, sizeValue);
+		return this.generateWithDalle(prompt);
 	}
 
-	private async generateWithDalle(prompt: string, sizeValue?: string): Promise<ImageResult> {
-		const base = this.settings.baseUrl.replace(/\/+$/, "");
+	private async generateWithDalle(prompt: string): Promise<ImageResult> {
+		const base = this.settings.imageOpenaiBaseUrl.replace(/\/+$/, "");
 		const url = `${base}/images/generations`;
 
 		// eslint-disable-next-line no-restricted-globals -- image API requires native fetch
@@ -55,13 +56,13 @@ export class ImageGenerator {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				"Authorization": `Bearer ${this.settings.apiKey}`,
+				"Authorization": `Bearer ${this.settings.imageOpenaiApiKey}`,
 			},
 			body: JSON.stringify({
-				model: this.settings.imageModel,
+				model: this.settings.imageOpenaiModel,
 				prompt,
 				n: 1,
-				size: sizeValue || this.settings.imageSize,
+				size: ImageGenerator.DEFAULT_OPENAI_IMAGE_SIZE,
 				response_format: "b64_json",
 			}),
 		});
@@ -81,9 +82,9 @@ export class ImageGenerator {
 	}
 
 	private async generateWithGemini(prompt: string): Promise<ImageResult> {
-		const base = this.settings.geminiBaseUrl.replace(/\/+$/, "");
-		const model = this.settings.geminiImageModel;
-		const params = new URLSearchParams({key: this.settings.geminiApiKey});
+		const base = this.settings.imageGeminiBaseUrl.replace(/\/+$/, "");
+		const model = this.settings.imageGeminiModel;
+		const params = new URLSearchParams({key: this.settings.imageGeminiApiKey});
 		const url = `${base}/v1beta/models/${model}:generateContent?${params.toString()}`;
 
 		// eslint-disable-next-line no-restricted-globals -- image API requires native fetch
