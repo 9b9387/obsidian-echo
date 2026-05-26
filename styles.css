@@ -310,8 +310,8 @@
 }
 
 /* Shared utility */
-.ai-hidden {
-	display: none !important;
+.ai-hidden.ai-hidden {
+	display: none;
 }
 
 /* Selection floating toolbar */

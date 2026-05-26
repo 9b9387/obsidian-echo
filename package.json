@@ -1,6 +1,6 @@
 {
-	"name": "obsidian-echo",
-	"version": "1.0.0",
+	"name": "echo-ai",
+	"version": "0.1.0",
 	"description": "Obsidian Echo - AI-powered writing assistant for Obsidian",
 	"main": "main.js",
 	"type": "module",
