@@ -5,6 +5,7 @@ import {OpenAIClient} from "./ai/openai-client";
 import {GeminiClient} from "./ai/gemini-client";
 import {buildPrompt, getAllActions} from "./ai/actions";
 import {buildEditorContext} from "./ai/context-builder";
+import type {EditorContext} from "./ai/context-builder";
 import {SlashSuggest} from "./ui/slash-suggest";
 import {SelectionToolbar} from "./ui/selection-toolbar";
 import {GeneratingIndicator} from "./ui/generating-indicator";
@@ -98,9 +99,8 @@ export default class AIPlugin extends Plugin {
 	}
 
 	private getPersistedSettings(): AIPluginSettings {
-		const {textSystemPrompt: _textSystemPrompt, ...settings} = this.settings as AIPluginSettings & {textSystemPrompt?: string};
 		return {
-			...settings,
+			...this.settings,
 			textOpenaiApiKey: "",
 			textGeminiApiKey: "",
 		};
@@ -144,7 +144,7 @@ export default class AIPlugin extends Plugin {
 		let promptText = "";
 		const needsContext = action.promptTemplate.includes("{{outline}}") || action.promptTemplate.includes("{{section}}") || action.promptTemplate.includes("{{full}}");
 
-		let ctx: any = null;
+		let ctx: EditorContext | null = null;
 
 		if (needsContext) {
 			this.activeInlineAsk?.destroy();
@@ -158,8 +158,8 @@ export default class AIPlugin extends Plugin {
 				this.activeInlineAsk = inlineInput;
 				inlineInput.setContextLabel(ctx.sectionTitle);
 				const offset = editor.posToOffset(cursor);
-				const cmEditor = (view.editor as unknown as {cm: {coordsAtPos: (pos: number) => {left: number; right: number; top: number; bottom: number} | null}}).cm;
-				const coords = cmEditor?.coordsAtPos(offset);
+				const cmEditor = (view.editor as unknown as {cm?: {coordsAtPos?: (pos: number) => {left: number; right: number; top: number; bottom: number} | null}}).cm;
+				const coords = cmEditor?.coordsAtPos?.(offset);
 				if (coords) {
 					inlineInput.positionAt(coords);
 				}

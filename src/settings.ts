@@ -139,6 +139,7 @@ export class AISettingTab extends PluginSettingTab {
 				.setName(text.modelId)
 				.setDesc(text.openaiModelDesc)
 				.addText(input => input
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("gpt-4o-mini")
 					.setValue(this.plugin.settings.textOpenaiModel)
 					.onChange(async (value) => {
@@ -161,6 +162,7 @@ export class AISettingTab extends PluginSettingTab {
 				.setName(text.modelId)
 				.setDesc(text.geminiModelDesc)
 				.addText(input => input
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setPlaceholder("gemini-2.5-flash")
 					.setValue(this.plugin.settings.textGeminiModel)
 					.onChange(async (value) => {
@@ -206,9 +208,11 @@ export class AISettingTab extends PluginSettingTab {
 			const component = new SecretComponentCtor!(this.app, el);
 			component
 				.setValue(secretName)
-				.onChange(async (value: string) => {
-					this.setSecretNameByTarget(target, provider, value ?? "");
-					await this.plugin.saveSettings();
+				.onChange((value: string) => {
+					void (async () => {
+						this.setSecretNameByTarget(target, provider, value ?? "");
+						await this.plugin.saveSettings();
+					})();
 				});
 			return component;
 		});
@@ -286,6 +290,7 @@ export class AISettingTab extends PluginSettingTab {
 					.setName(text.icon)
 					.setDesc(iconDesc)
 					.addText(input => input
+						// eslint-disable-next-line obsidianmd/ui/sentence-case
 						.setPlaceholder("zap")
 						.setValue(action.icon || "zap")
 						.onChange(async (value) => {
@@ -394,10 +399,10 @@ export class AISettingTab extends PluginSettingTab {
 		deleteButton.setAttr("aria-label", text.deleteAction);
 		deleteButton.setAttr("title", text.deleteAction);
 		Obsidian.setIcon(deleteButton, "trash");
-		deleteButton.addEventListener("click", async (event) => {
+		deleteButton.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			await onDelete();
+			void onDelete();
 		});
 
 		return detailsEl.createDiv({cls: "ai-action-body"});

@@ -24,9 +24,7 @@ export class GeneratingIndicator {
 		if (view && editor && pos) {
 			this.trackingPos = { view, editor, pos };
 			document.body.appendChild(this.el);
-			this.el.style.position = 'fixed';
-			this.el.style.top = '0';
-			this.el.style.left = '0';
+			this.el.setCssStyles({ position: 'fixed', top: '0', left: '0' });
 			this.updatePosition(view, editor, pos);
 
 			if (!this.trackFrame) {
@@ -34,12 +32,14 @@ export class GeneratingIndicator {
 			}
 		} else {
 			document.body.appendChild(this.el);
-			this.el.style.position = 'fixed';
-			this.el.style.top = 'auto';
-			this.el.style.left = 'auto';
-			this.el.style.bottom = '40px';
-			this.el.style.right = '16px';
-			this.el.style.display = 'flex';
+			this.el.setCssStyles({
+				position: 'fixed',
+				top: 'auto',
+				left: 'auto',
+				bottom: '40px',
+				right: '16px',
+				display: 'flex'
+			});
 		}
 	}
 
@@ -52,8 +52,8 @@ export class GeneratingIndicator {
 	private updatePosition(view: MarkdownView, editor: Editor, pos: {line: number, ch: number}) {
 		try {
 			const offset = editor.posToOffset(pos);
-			const cmEditor = (view.editor as any).cm;
-			const coords = cmEditor?.coordsAtPos(offset);
+			const cmEditor = (view.editor as unknown as {cm?: {coordsAtPos?: (pos: number) => {left: number; right: number; top: number; bottom: number} | null}}).cm;
+			const coords = cmEditor?.coordsAtPos?.(offset);
 			
 			if (coords) {
 				const top = coords.bottom;
@@ -63,12 +63,14 @@ export class GeneratingIndicator {
 				const maxLeft = window.innerWidth - width - 16;
 				const boundedLeft = Math.min(Math.max(16, left), maxLeft);
 
-				this.el.style.transform = `translate(${boundedLeft}px, ${top}px)`;
-				this.el.style.display = 'flex';
+				this.el.setCssStyles({
+					transform: `translate(${boundedLeft}px, ${top}px)`,
+					display: 'flex'
+				});
 			} else {
-				this.el.style.display = 'none';
+				this.el.setCssStyles({ display: 'none' });
 			}
-		} catch (e) {
+		} catch (_e) {
 			// Ignore positioning errors
 		}
 	}

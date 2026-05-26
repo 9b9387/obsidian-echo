@@ -26,7 +26,7 @@ export class InlineAskInput {
 			cls: "ai-inline-ask-input",
 			attr: {
 				type: "text",
-				placeholder: "Describe what to write, or Enter to continue...",
+				placeholder: "Describe what to write, or press enter to continue...",
 			},
 		});
 
@@ -37,7 +37,8 @@ export class InlineAskInput {
 		setIcon(submitBtn, "arrow-up");
 
 		const hint = this.el.createDiv({cls: "ai-inline-ask-hint"});
-		hint.setText("Enter to write · Esc to cancel");
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		hint.setText("Press Enter to write, or Esc to cancel");
 
 		this.input.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" && !e.shiftKey) {
@@ -57,7 +58,7 @@ export class InlineAskInput {
 		if (sectionTitle) {
 			this.contextLabel.setText(`· ${sectionTitle}`);
 		} else {
-			this.contextLabel.setText("· Document");
+			this.contextLabel.setText("· document");
 		}
 	}
 
