@@ -23,17 +23,17 @@ export class SlashSuggest extends EditorSuggest<AIAction> {
 		editor: Editor,
 		_file: TFile | null,
 	): EditorSuggestTriggerInfo | null {
-		const trigger = "/";
 		const line = editor.getLine(cursor.line);
 		const beforeCursor = line.slice(0, cursor.ch);
 
-		const escapedTrigger = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const pattern = new RegExp(`^${escapedTrigger}(\\w*)$`);
-		const match = beforeCursor.match(pattern);
+		// Match "/" at the start of the line or after a space, followed by optional word characters or hyphens
+		const match = beforeCursor.match(/(?:^|\s)\/([\w-]*)$/);
 		if (!match) return null;
 
+		const lastSlashIndex = beforeCursor.lastIndexOf("/");
+
 		return {
-			start: {line: cursor.line, ch: 0},
+			start: {line: cursor.line, ch: lastSlashIndex},
 			end: cursor,
 			query: match[1] ?? "",
 		};
