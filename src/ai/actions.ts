@@ -10,12 +10,12 @@ export function customActionToAIAction(ca: CustomAction): AIAction {
 		name: ca.name,
 		description: `Custom: ${ca.name}`,
 		promptTemplate: template,
-		generationType: ca.generationType,
+		generationType: ca.generationType || "text",
 		needsInput: template.includes("{{input}}"),
 		usesSelection: template.includes("{{selection}}"),
 		icon: ca.icon || "zap",
-		outputMode: ca.outputMode,
-		triggerMode: ca.triggerMode,
+		outputMode: ca.outputMode || "nextLine",
+		triggerMode: ca.triggerMode || "both",
 	};
 }
 

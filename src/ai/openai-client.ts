@@ -29,10 +29,16 @@ export class OpenAIClient implements LLMProvider {
 
 			const data = response.json as ChatCompletionResponse;
 			return data.choices?.[0]?.message?.content ?? "";
-		} catch (err: any) {
+		} catch (err: unknown) {
 			let message = `OpenAI API error`;
-			if (err.status) message += ` ${err.status}`;
-			throw new Error(`${message}: ${err.message || String(err)}`);
+			if (err instanceof Error) {
+				message += `: ${err.message}`;
+			} else if (typeof err === "object" && err !== null && "status" in err) {
+				message += ` ${String((err as {status: unknown}).status)}`;
+			} else {
+				message += `: ${String(err)}`;
+			}
+			throw new Error(message);
 		}
 	}
 

@@ -29,10 +29,16 @@ export class GeminiClient implements LLMProvider {
 
 			const data = response.json as GeminiResponse;
 			return this.extractText(data);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			let message = `Gemini API error`;
-			if (err.status) message += ` ${err.status}`;
-			throw new Error(`${message}: ${err.message || String(err)}`);
+			if (err instanceof Error) {
+				message += `: ${err.message}`;
+			} else if (typeof err === "object" && err !== null && "status" in err) {
+				message += ` ${String((err as {status: unknown}).status)}`;
+			} else {
+				message += `: ${String(err)}`;
+			}
+			throw new Error(message);
 		}
 	}
 
