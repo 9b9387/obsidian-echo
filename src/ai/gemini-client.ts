@@ -1,10 +1,10 @@
+import {requestUrl} from "obsidian";
 import type {ChatMessage} from "../types";
 import type {AIPluginSettings} from "../settings";
 import type {LLMProvider} from "./provider";
 
 interface GeminiResponse {
 	candidates?: {content?: {parts?: {text?: string}[]}}[];
-	error?: {message?: string};
 }
 
 export class GeminiClient implements LLMProvider {
@@ -19,19 +19,21 @@ export class GeminiClient implements LLMProvider {
 	}
 
 	async chat(messages: ChatMessage[]): Promise<string> {
-		// eslint-disable-next-line no-restricted-globals -- streaming requires native fetch
-		const response = await fetch(this.buildUrl(), {
-			method: "POST",
-			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify(this.buildBody(messages)),
-		});
+		try {
+			const response = await requestUrl({
+				url: this.buildUrl(),
+				method: "POST",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify(this.buildBody(messages)),
+			});
 
-		if (!response.ok) {
-			throw await this.parseError(response);
+			const data = response.json as GeminiResponse;
+			return this.extractText(data);
+		} catch (err: any) {
+			let message = `Gemini API error`;
+			if (err.status) message += ` ${err.status}`;
+			throw new Error(`${message}: ${err.message || String(err)}`);
 		}
-
-		const data = await response.json() as GeminiResponse;
-		return this.extractText(data);
 	}
 
 	private buildUrl(): string {
@@ -75,18 +77,5 @@ export class GeminiClient implements LLMProvider {
 		const parts = data.candidates?.[0]?.content?.parts;
 		if (!parts) return "";
 		return parts.map(p => p.text ?? "").join("");
-	}
-
-	private async parseError(response: Response): Promise<Error> {
-		let message = `Gemini API error ${response.status}`;
-		try {
-			const body = await response.json() as GeminiResponse;
-			if (body.error?.message) {
-				message = `${message}: ${body.error.message}`;
-			}
-		} catch {
-			// body not JSON
-		}
-		return new Error(message);
 	}
 }

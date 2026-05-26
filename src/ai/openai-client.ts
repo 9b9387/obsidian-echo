@@ -1,13 +1,10 @@
+import {requestUrl} from "obsidian";
 import type {ChatMessage} from "../types";
 import type {AIPluginSettings} from "../settings";
 import type {LLMProvider} from "./provider";
 
 interface ChatCompletionResponse {
 	choices?: {message?: {content?: string}}[];
-}
-
-interface APIError {
-	error?: {message?: string};
 }
 
 export class OpenAIClient implements LLMProvider {
@@ -22,19 +19,21 @@ export class OpenAIClient implements LLMProvider {
 	}
 
 	async chat(messages: ChatMessage[]): Promise<string> {
-		// eslint-disable-next-line no-restricted-globals -- streaming requires native fetch
-		const response = await fetch(this.buildUrl(), {
-			method: "POST",
-			headers: this.buildHeaders(),
-			body: JSON.stringify(this.buildBody(messages)),
-		});
+		try {
+			const response = await requestUrl({
+				url: this.buildUrl(),
+				method: "POST",
+				headers: this.buildHeaders(),
+				body: JSON.stringify(this.buildBody(messages)),
+			});
 
-		if (!response.ok) {
-			throw await this.parseError(response);
+			const data = response.json as ChatCompletionResponse;
+			return data.choices?.[0]?.message?.content ?? "";
+		} catch (err: any) {
+			let message = `OpenAI API error`;
+			if (err.status) message += ` ${err.status}`;
+			throw new Error(`${message}: ${err.message || String(err)}`);
 		}
-
-		const data = await response.json() as ChatCompletionResponse;
-		return data.choices?.[0]?.message?.content ?? "";
 	}
 
 	private buildUrl(): string {
@@ -62,18 +61,5 @@ export class OpenAIClient implements LLMProvider {
 			frequency_penalty: this.settings.frequencyPenalty,
 			presence_penalty: this.settings.presencePenalty,
 		};
-	}
-
-	private async parseError(response: Response): Promise<Error> {
-		let message = `API error ${response.status}`;
-		try {
-			const body = await response.json() as APIError;
-			if (body.error?.message) {
-				message = `${message}: ${body.error.message}`;
-			}
-		} catch {
-			// body not JSON
-		}
-		return new Error(message);
 	}
 }

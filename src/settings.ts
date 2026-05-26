@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: AIPluginSettings = {
 		{
 			id: "echo",
 			name: "Echo",
-			promptTemplate: "{{full}}\n\nContinue writing naturally from where the current section ends. Expand on the topic, add detail, and maintain the same structure and depth as sibling sections.",
+			promptTemplate: "{{full}}\n\nContinue writing naturally from where the current section ends. Expand on the topic, add detail, and maintain the same structure and depth as sibling sections.\n\n{{input}}",
 			generationType: "text",
 			outputMode: "nextLine",
 			triggerMode: "both",
