@@ -1,9 +1,12 @@
 import * as Obsidian from "obsidian";
 import {App, PluginSettingTab, Setting, TextAreaComponent} from "obsidian";
+import {getSettingsText, type SettingsText} from "./i18n";
 import type AIPlugin from "./main";
 import type {CustomAction} from "./types";
 
 export type LLMProviderType = "openai" | "gemini";
+
+export const DEFAULT_TEXT_SYSTEM_PROMPT = "You are a helpful writing assistant.";
 
 export interface AIPluginSettings {
 	// Text LLM
@@ -17,26 +20,12 @@ export interface AIPluginSettings {
 	textGeminiBaseUrl: string;
 	textGeminiModel: string;
 	textGeminiTopK: number;
-	// Image LLM
-	imageProvider: LLMProviderType;
-	imageOpenaiApiKey: string;
-	imageOpenaiApiKeySecretName: string;
-	imageOpenaiBaseUrl: string;
-	imageOpenaiModel: string;
-	imageGeminiApiKey: string;
-	imageGeminiApiKeySecretName: string;
-	imageGeminiBaseUrl: string;
-	imageGeminiModel: string;
 	// Shared model params
 	temperature: number;
 	maxTokens: number;
 	topP: number;
 	frequencyPenalty: number;
 	presencePenalty: number;
-	textSystemPrompt: string;
-	imageSystemPrompt: string;
-	// Image output
-	imageSaveFolder: string;
 	streamingEnabled: boolean;
 	customActions: CustomAction[];
 }
@@ -52,23 +41,11 @@ export const DEFAULT_SETTINGS: AIPluginSettings = {
 	textGeminiBaseUrl: "https://generativelanguage.googleapis.com",
 	textGeminiModel: "gemini-2.5-flash",
 	textGeminiTopK: 40,
-	imageProvider: "openai",
-	imageOpenaiApiKey: "",
-	imageOpenaiApiKeySecretName: "",
-	imageOpenaiBaseUrl: "https://api.openai.com/v1",
-	imageOpenaiModel: "dall-e-3",
-	imageGeminiApiKey: "",
-	imageGeminiApiKeySecretName: "",
-	imageGeminiBaseUrl: "https://generativelanguage.googleapis.com",
-	imageGeminiModel: "gemini-2.0-flash-preview-image-generation",
-	imageSaveFolder: "ai-images",
 	temperature: 0.7,
 	maxTokens: 2048,
 	topP: 1,
 	frequencyPenalty: 0,
 	presencePenalty: 0,
-	textSystemPrompt: "You are a helpful writing assistant. Respond in the same language as the user's input unless instructed otherwise.",
-	imageSystemPrompt: "",
 	streamingEnabled: true,
 	customActions: [
 		{
@@ -88,26 +65,13 @@ export const DEFAULT_SETTINGS: AIPluginSettings = {
 			outputMode: "replace",
 			triggerMode: "both",
 			icon: "languages",
-		},
-		{
-			id: "generate-image",
-			name: "Generate image",
-			promptTemplate: "{{input}}\n\n{{selection}}",
-			generationType: "image",
-			outputMode: "nextLine",
-			triggerMode: "toolbar",
-			icon: "image",
 		}
 	],
 };
 
 export class AISettingTab extends PluginSettingTab {
 	plugin: AIPlugin;
-	private expandedModelSections: Record<"text" | "image", boolean> = {
-		text: true,
-		image: false,
-	};
-	private expandedActionIds: Set<string> = new Set();
+	private expandedActionIds = new Set<string>();
 
 	constructor(app: App, plugin: AIPlugin) {
 		super(app, plugin);
@@ -116,39 +80,40 @@ export class AISettingTab extends PluginSettingTab {
 
 	display(): void {
 		const {containerEl} = this;
+		const text = getSettingsText();
 		containerEl.empty();
+		containerEl.addClass("ai-settings");
 
-		const modelBox = containerEl.createDiv({cls: "ai-settings-box"});
-		new Setting(modelBox).setName("Model settings").setHeading();
-		const textSection = this.createModelAccordion(modelBox, "Text generation model", "text");
-		this.renderTextModelSection(textSection);
-		const imageSection = this.createModelAccordion(modelBox, "Image generation model", "image");
-		this.renderImageModelSection(imageSection);
-		this.renderCustomActionsSection(containerEl);
+		const contentEl = containerEl.createDiv({cls: "ai-settings-content"});
+
+		new Setting(contentEl)
+			.setName(text.model)
+			.setDesc(text.modelDesc)
+			.setHeading();
+		const modelGroup = contentEl.createDiv({cls: "ai-settings-group"});
+		this.renderTextModelSection(modelGroup, text);
+
+		new Setting(contentEl)
+			.setName(text.actions)
+			.setDesc(text.actionsDesc)
+			.setHeading()
+			.addButton(btn => btn
+				.setButtonText(text.addAction)
+				.setCta()
+				.onClick(() => {
+					this.addAction();
+				}));
+		const actionsGroup = contentEl.createDiv({cls: "ai-settings-group"});
+		this.renderCustomActionsSection(actionsGroup, text);
 	}
 
-	private createModelAccordion(containerEl: HTMLElement, title: string, key: "text" | "image"): HTMLElement {
-		const detailsEl = containerEl.createEl("details", {cls: "ai-settings-accordion"});
-		if (this.expandedModelSections[key]) {
-			detailsEl.setAttr("open", "");
-		}
-		detailsEl.addEventListener("toggle", () => {
-			this.expandedModelSections[key] = detailsEl.open;
-		});
-		detailsEl.createEl("summary", {
-			text: title,
-			cls: "ai-settings-accordion-summary",
-		});
-		return detailsEl.createDiv({cls: "ai-settings-accordion-content"});
-	}
-
-	private renderTextModelSection(containerEl: HTMLElement): void {
+	private renderTextModelSection(containerEl: HTMLElement, text: SettingsText): void {
 		new Setting(containerEl)
-			.setName("Provider")
-			.setDesc("Provider used for text generation")
+			.setName(text.provider)
+			.setDesc(text.providerDesc)
 			.addDropdown(dropdown => dropdown
-				.addOption("openai", "OpenAI-compatible")
-				.addOption("gemini", "Google Gemini")
+				.addOption("openai", text.openaiCompatible)
+				.addOption("gemini", text.googleGemini)
 				.setValue(this.plugin.settings.textProvider)
 				.onChange(async (value) => {
 					this.plugin.settings.textProvider = value as LLMProviderType;
@@ -156,13 +121,13 @@ export class AISettingTab extends PluginSettingTab {
 					this.display();
 				}));
 
-		this.renderApiKeyInfo(containerEl, "API key secret", "text", this.plugin.settings.textProvider);
+		this.renderApiKeyInfo(containerEl, text.apiKeySecret, "text", this.plugin.settings.textProvider, text);
 
 		if (this.plugin.settings.textProvider === "openai") {
 			new Setting(containerEl)
-				.setName("Base URL")
-				.setDesc("Text endpoint for OpenAI-compatible API")
-				.addText(text => text
+				.setName(text.baseUrl)
+				.setDesc(text.openaiBaseUrlDesc)
+				.addText(input => input
 					.setPlaceholder("https://api.openai.com/v1")
 					.setValue(this.plugin.settings.textOpenaiBaseUrl)
 					.onChange(async (value) => {
@@ -171,9 +136,9 @@ export class AISettingTab extends PluginSettingTab {
 					}));
 
 			new Setting(containerEl)
-				.setName("Model")
-				.setDesc("Text model id")
-				.addText(text => text
+				.setName(text.modelId)
+				.setDesc(text.openaiModelDesc)
+				.addText(input => input
 					.setPlaceholder("gpt-4o-mini")
 					.setValue(this.plugin.settings.textOpenaiModel)
 					.onChange(async (value) => {
@@ -182,9 +147,9 @@ export class AISettingTab extends PluginSettingTab {
 					}));
 		} else {
 			new Setting(containerEl)
-				.setName("Base URL")
-				.setDesc("Text endpoint for Gemini API")
-				.addText(text => text
+				.setName(text.baseUrl)
+				.setDesc(text.geminiBaseUrlDesc)
+				.addText(input => input
 					.setPlaceholder("https://generativelanguage.googleapis.com")
 					.setValue(this.plugin.settings.textGeminiBaseUrl)
 					.onChange(async (value) => {
@@ -193,9 +158,9 @@ export class AISettingTab extends PluginSettingTab {
 					}));
 
 			new Setting(containerEl)
-				.setName("Model")
-				.setDesc("Gemini text model id")
-				.addText(text => text
+				.setName(text.modelId)
+				.setDesc(text.geminiModelDesc)
+				.addText(input => input
 					.setPlaceholder("gemini-2.5-flash")
 					.setValue(this.plugin.settings.textGeminiModel)
 					.onChange(async (value) => {
@@ -203,127 +168,24 @@ export class AISettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}));
 		}
-
-		new Setting(containerEl)
-			.setName("System prompt")
-			.setDesc("System prompt used for text generation")
-			.addTextArea((text: TextAreaComponent) => {
-				text
-					.setPlaceholder("You are a helpful assistant...")
-					.setValue(this.plugin.settings.textSystemPrompt)
-					.onChange(async (value) => {
-						this.plugin.settings.textSystemPrompt = value;
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.rows = 3;
-				text.inputEl.cols = 50;
-			});
-	}
-
-	private renderImageModelSection(containerEl: HTMLElement): void {
-		new Setting(containerEl)
-			.setName("Provider")
-			.setDesc("Provider used for image generation")
-			.addDropdown(dropdown => dropdown
-				.addOption("openai", "OpenAI-compatible")
-				.addOption("gemini", "Google Gemini")
-				.setValue(this.plugin.settings.imageProvider)
-				.onChange(async (value) => {
-					this.plugin.settings.imageProvider = value as LLMProviderType;
-					await this.plugin.saveSettings();
-					this.display();
-				}));
-
-		this.renderApiKeyInfo(containerEl, "API key secret", "image", this.plugin.settings.imageProvider);
-
-		if (this.plugin.settings.imageProvider === "openai") {
-			new Setting(containerEl)
-				.setName("Base URL")
-				.setDesc("Image endpoint for OpenAI-compatible API")
-				.addText(text => text
-					.setPlaceholder("https://api.openai.com/v1")
-					.setValue(this.plugin.settings.imageOpenaiBaseUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.imageOpenaiBaseUrl = value;
-						await this.plugin.saveSettings();
-					}));
-
-			new Setting(containerEl)
-				.setName("Image model")
-				.setDesc("OpenAI image model id")
-				.addText(text => text
-					.setPlaceholder("dall-e-3")
-					.setValue(this.plugin.settings.imageOpenaiModel)
-					.onChange(async (value) => {
-						this.plugin.settings.imageOpenaiModel = value;
-						await this.plugin.saveSettings();
-					}));
-		} else {
-			new Setting(containerEl)
-				.setName("Base URL")
-				.setDesc("Image endpoint for Gemini API")
-				.addText(text => text
-					.setPlaceholder("https://generativelanguage.googleapis.com")
-					.setValue(this.plugin.settings.imageGeminiBaseUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.imageGeminiBaseUrl = value;
-						await this.plugin.saveSettings();
-					}));
-
-			new Setting(containerEl)
-				.setName("Image model")
-				.setDesc("Gemini image model id")
-				.addText(text => text
-					.setPlaceholder("gemini-2.0-flash-preview-image-generation")
-					.setValue(this.plugin.settings.imageGeminiModel)
-					.onChange(async (value) => {
-						this.plugin.settings.imageGeminiModel = value;
-						await this.plugin.saveSettings();
-					}));
-		}
-
-		new Setting(containerEl)
-			.setName("Image save folder")
-			.setDesc("Folder in vault to save generated images")
-			.addText(text => text
-				.setPlaceholder("ai-images")
-				.setValue(this.plugin.settings.imageSaveFolder)
-				.onChange(async (value) => {
-					this.plugin.settings.imageSaveFolder = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName("System prompt")
-			.setDesc("Instruction prefix for image prompt composition")
-			.addTextArea((text: TextAreaComponent) => {
-				text
-					.setPlaceholder("You are an image prompt assistant...")
-					.setValue(this.plugin.settings.imageSystemPrompt)
-					.onChange(async (value) => {
-						this.plugin.settings.imageSystemPrompt = value;
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.rows = 3;
-				text.inputEl.cols = 50;
-			});
 	}
 
 	private renderApiKeyInfo(
 		containerEl: HTMLElement,
 		title: string,
-		target: "text" | "image",
+		target: "text",
 		provider: "openai" | "gemini",
+		text: SettingsText,
 	): void {
 		new Setting(containerEl)
 			.setName(title)
-			.setDesc("Select or create a secret in Obsidian Secret Storage")
+			.setDesc(text.apiKeySecretDesc)
 			.then(setting => {
 				this.addSecretSelector(setting, target, provider);
 			});
 	}
 
-	private addSecretSelector(setting: Setting, target: "text" | "image", provider: "openai" | "gemini"): void {
+	private addSecretSelector(setting: Setting, target: "text", provider: "openai" | "gemini"): void {
 		type SecretComponentLike = {
 			setValue(value: string): SecretComponentLike;
 			onChange(callback: (value: string) => void): SecretComponentLike;
@@ -352,125 +214,78 @@ export class AISettingTab extends PluginSettingTab {
 		});
 	}
 
-	private getSecretNameByTarget(target: "text" | "image", provider: "openai" | "gemini"): string {
-		if (target === "text") {
-			return provider === "openai"
-				? this.plugin.settings.textOpenaiApiKeySecretName
-				: this.plugin.settings.textGeminiApiKeySecretName;
-		}
+	private getSecretNameByTarget(target: "text", provider: "openai" | "gemini"): string {
 		return provider === "openai"
-			? this.plugin.settings.imageOpenaiApiKeySecretName
-			: this.plugin.settings.imageGeminiApiKeySecretName;
+			? this.plugin.settings.textOpenaiApiKeySecretName
+			: this.plugin.settings.textGeminiApiKeySecretName;
 	}
 
-	private setSecretNameByTarget(target: "text" | "image", provider: "openai" | "gemini", value: string): void {
-		if (target === "text") {
-			if (provider === "openai") {
-				this.plugin.settings.textOpenaiApiKeySecretName = value;
-			} else {
-				this.plugin.settings.textGeminiApiKeySecretName = value;
-			}
-			return;
-		}
+	private setSecretNameByTarget(target: "text", provider: "openai" | "gemini", value: string): void {
 		if (provider === "openai") {
-			this.plugin.settings.imageOpenaiApiKeySecretName = value;
+			this.plugin.settings.textOpenaiApiKeySecretName = value;
 		} else {
-			this.plugin.settings.imageGeminiApiKeySecretName = value;
+			this.plugin.settings.textGeminiApiKeySecretName = value;
 		}
 	}
 
-	private renderCustomActionsSection(containerEl: HTMLElement): void {
-		const actionBox = containerEl.createDiv({cls: "ai-settings-box"});
-		new Setting(actionBox).setName("Actions config").setHeading();
-
+	private renderCustomActionsSection(containerEl: HTMLElement, text: SettingsText): void {
 		const actions = this.plugin.settings.customActions;
 
 		for (let i = 0; i < actions.length; i++) {
 			const action = actions[i]!;
 			const idx = i;
-			const detailsEl = actionBox.createEl("details", {cls: "ai-settings-accordion"});
-			if (this.expandedActionIds.has(action.id)) {
-				detailsEl.setAttr("open", "");
-			}
-			detailsEl.addEventListener("toggle", () => {
-				if (detailsEl.open) {
-					this.expandedActionIds.add(action.id);
-				} else {
-					this.expandedActionIds.delete(action.id);
-				}
+			const wrapper = this.createActionPanel(containerEl, action, async (enabled) => {
+				action.enabled = enabled;
+				await this.plugin.saveSettings();
+			}, async () => {
+				actions.splice(idx, 1);
+				await this.plugin.saveSettings();
+				this.display();
 			});
-			const summaryLabel = action.name.trim() || "(Unnamed Action)";
-			detailsEl.createEl("summary", {
-				text: `${summaryLabel} · ${action.generationType} · ${action.triggerMode} · ${action.outputMode}`,
-				cls: "ai-settings-accordion-summary",
-			});
-			const wrapper = detailsEl.createDiv({cls: "ai-settings-accordion-content ai-custom-action-item"});
 
 			new Setting(wrapper)
-				.setName("Action name")
-				.addText(text => text
-					.setPlaceholder("Action name")
+				.setName(text.actionName)
+				.setDesc(text.actionNameDesc)
+				.addText(input => input
+					.setPlaceholder(text.actionNamePlaceholder)
 					.setValue(action.name)
 					.onChange(async (value) => {
 						action.name = value;
 						await this.plugin.saveSettings();
-					}))
-				.addExtraButton(btn => btn
-					.setIcon("trash")
-					.setTooltip("Delete action")
-					.onClick(async () => {
-						actions.splice(idx, 1);
-							this.expandedActionIds.delete(action.id);
-						await this.plugin.saveSettings();
-						this.display();
 					}));
 
 			new Setting(wrapper)
-				.setName("Trigger method")
-				.setDesc("Where to show this command")
+				.setName(text.triggerMethod)
+				.setDesc(text.triggerMethodDesc)
 				.addDropdown(dropdown => dropdown
-					.addOption("slash", "Slash command only")
-					.addOption("toolbar", "Selection toolbar only")
-					.addOption("both", "Both slash and toolbar")
+					.addOption("slash", text.slashOnly)
+					.addOption("toolbar", text.toolbarOnly)
+					.addOption("both", text.bothSlashToolbar)
 					.setValue(action.triggerMode)
 					.onChange(async (value) => {
 						const newMode = value as "slash" | "toolbar" | "both";
 						action.triggerMode = newMode;
-						if (action.generationType === "image") {
-							action.outputMode = "nextLine";
-						}
-						if (newMode === "slash" && action.generationType === "text") {
+						if (newMode === "slash") {
 							action.outputMode = "cursor";
 						}
-						await this.plugin.saveSettings();
-						this.display();
-					}));
-
-			new Setting(wrapper)
-				.setName("Generation type")
-				.setDesc("Text generation or image generation")
-				.addDropdown(dropdown => dropdown
-					.addOption("text", "Text")
-					.addOption("image", "Image")
-					.setValue(action.generationType)
-					.onChange(async (value) => {
-						action.generationType = value as "text" | "image";
-							if (action.generationType === "image") {
-								action.outputMode = "nextLine";
-						}
+						this.expandedActionIds.add(action.id);
 						await this.plugin.saveSettings();
 						this.display();
 					}));
 
 			if (action.triggerMode !== "slash") {
 				const iconDesc = document.createDocumentFragment();
-				iconDesc.appendText("Lucide icon name. Find icons at ");
-				iconDesc.createEl("a", { text: "lucide.dev/icons", href: "https://lucide.dev/icons/" });
+				iconDesc.appendText(text.iconDescPrefix);
+				iconDesc.createEl("a", {
+					text: text.iconDescLink,
+					href: "https://lucide.dev/icons/",
+				});
+				iconDesc.appendText(text.iconDescSuffix);
 
 				new Setting(wrapper)
-					.setName("Icon")
+					.setName(text.icon)
 					.setDesc(iconDesc)
-					.addText(text => text
+					.addText(input => input
 						.setPlaceholder("zap")
 						.setValue(action.icon || "zap")
 						.onChange(async (value) => {
@@ -478,71 +293,135 @@ export class AISettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 						}));
 
-				if (action.generationType === "text") {
-					new Setting(wrapper)
-						.setName("Output mode")
-						.setDesc("How to insert AI output")
-						.addDropdown(dropdown => dropdown
-							.addOption("replace", "Replace selection")
-							.addOption("cursor", "Insert at cursor")
-							.addOption("nextLine", "Insert at next line")
-							.setValue(action.outputMode)
-							.onChange(async (value) => {
-								action.outputMode = value as "replace" | "cursor" | "nextLine";
-								await this.plugin.saveSettings();
-							}));
-				} else {
-					new Setting(wrapper)
-						.setName("Output mode")
-						.setDesc("Image actions always insert at next line (fixed)")
-						.addText(text => text
-							.setValue("nextLine")
-							.setDisabled(true));
-					action.outputMode = "nextLine";
-				}
+				new Setting(wrapper)
+					.setName(text.outputMode)
+					.setDesc(text.outputModeDesc)
+					.addDropdown(dropdown => dropdown
+						.addOption("replace", text.replaceSelection)
+						.addOption("cursor", text.insertAtCursor)
+						.addOption("nextLine", text.insertAtNextLine)
+						.setValue(action.outputMode)
+						.onChange((value) => {
+							action.outputMode = value as "replace" | "cursor" | "nextLine";
+							void this.plugin.saveSettings();
+						}));
 			}
 
-			let placeholdersDesc = "Placeholders: {{selection}}, {{outline}}, {{section}}, {{full}}, {{input}}.";
+			let placeholdersDesc = text.placeholdersAll;
 			if (action.triggerMode === "slash") {
-				placeholdersDesc = "Placeholders: {{outline}}, {{section}}, {{full}}, {{input}}. (Slash does not support {{selection}})";
+				placeholdersDesc = text.placeholdersSlash;
 			} else if (action.triggerMode === "toolbar") {
-				placeholdersDesc = "Placeholders: {{selection}}, {{outline}}, {{section}}, {{full}}. (Toolbar does not support {{input}})";
+				placeholdersDesc = text.placeholdersToolbar;
 			}
 
 			new Setting(wrapper)
-				.setName("Prompt template")
+				.setName(text.promptTemplate)
 				.setDesc(placeholdersDesc)
-				.addTextArea((text: TextAreaComponent) => {
-					text
-						.setPlaceholder("Translate the following text to English:\n\n{{selection}}")
+				.addTextArea((textarea: TextAreaComponent) => {
+					textarea
+						.setPlaceholder(this.getPromptPlaceholder(action.triggerMode, text))
 						.setValue(action.promptTemplate)
 						.onChange(async (value) => {
 							action.promptTemplate = value;
 							await this.plugin.saveSettings();
 						});
-					text.inputEl.rows = 3;
-					text.inputEl.cols = 50;
+					textarea.inputEl.rows = 6;
+					textarea.inputEl.cols = 50;
 				});
 		}
 
-		new Setting(actionBox)
-			.addButton(btn => btn
-				.setButtonText("Add action")
-				.setCta()
-				.onClick(async () => {
-					const newAction = {
-						id: "custom-" + Date.now(),
-						name: "",
-						promptTemplate: "",
-						generationType: "text",
-						outputMode: "nextLine",
-						triggerMode: "both",
-						icon: "zap",
-					} as const;
-					actions.push(newAction);
-					this.expandedActionIds.add(newAction.id);
-					await this.plugin.saveSettings();
-					this.display();
-				}));
+	}
+
+	private addAction(): void {
+		this.plugin.settings.customActions.push({
+			id: "custom-" + Date.now(),
+			name: "",
+			enabled: true,
+			promptTemplate: "",
+			generationType: "text",
+			outputMode: "nextLine",
+			triggerMode: "both",
+			icon: "zap",
+		});
+		void this.plugin.saveSettings().then(() => this.display());
+	}
+
+	private createActionPanel(
+		containerEl: HTMLElement,
+		action: CustomAction,
+		onEnabledChange: (enabled: boolean) => Promise<void>,
+		onDelete: () => Promise<void>,
+	): HTMLElement {
+		const detailsEl = containerEl.createEl("details", {cls: "ai-action-panel"});
+		if (this.expandedActionIds.has(action.id)) {
+			detailsEl.setAttr("open", "");
+		}
+		detailsEl.addEventListener("toggle", () => {
+			if (detailsEl.open) {
+				this.expandedActionIds.add(action.id);
+			} else {
+				this.expandedActionIds.delete(action.id);
+			}
+		});
+
+		const summaryEl = detailsEl.createEl("summary", {cls: "ai-action-summary"});
+		summaryEl.createSpan({
+			cls: "ai-action-name",
+			text: action.name.trim() || getSettingsText().unnamedAction,
+		});
+
+		const metaEl = summaryEl.createDiv({cls: "ai-action-meta"});
+		const text = getSettingsText();
+		metaEl.createSpan({text: this.formatTriggerMode(action.triggerMode, text)});
+		metaEl.createSpan({text: this.formatOutputMode(action.outputMode, text)});
+
+		const toggleEl = summaryEl.createDiv({cls: "ai-action-toggle"});
+		const toggle = new Obsidian.ToggleComponent(toggleEl);
+		toggle
+			.setValue(action.enabled !== false)
+			.onChange((enabled) => {
+				void onEnabledChange(enabled);
+			});
+		const stopSummaryToggle = (event: Event) => {
+			event.stopPropagation();
+		};
+		toggleEl.addEventListener("pointerdown", stopSummaryToggle, {capture: true});
+		toggleEl.addEventListener("mousedown", stopSummaryToggle, {capture: true});
+		toggleEl.addEventListener("click", stopSummaryToggle, {capture: true});
+
+		const deleteButton = summaryEl.createEl("button", {cls: "clickable-icon ai-action-delete"});
+		deleteButton.setAttr("type", "button");
+		deleteButton.setAttr("aria-label", text.deleteAction);
+		deleteButton.setAttr("title", text.deleteAction);
+		Obsidian.setIcon(deleteButton, "trash");
+		deleteButton.addEventListener("click", async (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			await onDelete();
+		});
+
+		return detailsEl.createDiv({cls: "ai-action-body"});
+	}
+
+	private formatTriggerMode(mode: CustomAction["triggerMode"], text: SettingsText): string {
+		if (mode === "slash") return text.metaSlash;
+		if (mode === "toolbar") return text.metaToolbar;
+		return text.metaBoth;
+	}
+
+	private formatOutputMode(mode: CustomAction["outputMode"], text: SettingsText): string {
+		if (mode === "replace") return text.metaReplace;
+		if (mode === "cursor") return text.metaCursor;
+		return text.metaNextLine;
+	}
+
+	private getPromptPlaceholder(mode: CustomAction["triggerMode"], text: SettingsText): string {
+		if (mode === "slash") {
+			return text.placeholderSlash;
+		}
+		if (mode === "toolbar") {
+			return text.placeholderToolbar;
+		}
+		return text.placeholderBoth;
 	}
 }

@@ -1,11 +1,10 @@
-import {App, Editor, MarkdownView, Menu, Notice, Plugin, TFolder, normalizePath} from "obsidian";
-import {AIPluginSettings, AISettingTab, DEFAULT_SETTINGS} from "./settings";
+import {App, Editor, MarkdownView, Menu, Notice, Plugin} from "obsidian";
+import {AIPluginSettings, AISettingTab, DEFAULT_SETTINGS, DEFAULT_TEXT_SYSTEM_PROMPT} from "./settings";
 import type {LLMProvider} from "./ai/provider";
 import {OpenAIClient} from "./ai/openai-client";
 import {GeminiClient} from "./ai/gemini-client";
-import {ImageGenerator} from "./ai/image-generator";
 import {buildPrompt, getAllActions} from "./ai/actions";
-import {buildEditorContext, formatContextPrompt, INLINE_ASK_SYSTEM_PROMPT} from "./ai/context-builder";
+import {buildEditorContext} from "./ai/context-builder";
 import {SlashSuggest} from "./ui/slash-suggest";
 import {SelectionToolbar} from "./ui/selection-toolbar";
 import {GeneratingIndicator} from "./ui/generating-indicator";
@@ -27,7 +26,6 @@ type GenerationContext = {
 export default class AIPlugin extends Plugin {
 	settings: AIPluginSettings;
 	client: LLMProvider;
-	imageGenerator: ImageGenerator;
 	private generationHandlers: Record<GenerationType, (ctx: GenerationContext) => Promise<void>>;
 	cachedSelection = "";
 	private statusBarEl: HTMLElement | null = null;
@@ -39,7 +37,6 @@ export default class AIPlugin extends Plugin {
 		super(app, manifest);
 		this.generationHandlers = {
 			text: async (ctx) => this.executeTextGeneration(ctx),
-			image: async (ctx) => this.executeImageGeneration(ctx.editor, ctx.promptText, ctx.startPos),
 		};
 	}
 
@@ -50,7 +47,6 @@ export default class AIPlugin extends Plugin {
 
 		await this.loadSettings();
 		this.client = this.createClient();
-		this.imageGenerator = new ImageGenerator(this.settings);
 
 		this.statusBarEl = this.addStatusBarItem();
 		this.statusBarEl.setText("");
@@ -94,7 +90,6 @@ export default class AIPlugin extends Plugin {
 		this.hydrateApiKeysFromSecretStorage();
 		await this.saveData(this.getPersistedSettings());
 		this.client = this.createClient();
-		this.imageGenerator.updateSettings(this.settings);
 		this.selectionToolbar?.rebuild();
 	}
 
@@ -103,12 +98,11 @@ export default class AIPlugin extends Plugin {
 	}
 
 	private getPersistedSettings(): AIPluginSettings {
+		const {textSystemPrompt: _textSystemPrompt, ...settings} = this.settings as AIPluginSettings & {textSystemPrompt?: string};
 		return {
-			...this.settings,
+			...settings,
 			textOpenaiApiKey: "",
 			textGeminiApiKey: "",
-			imageOpenaiApiKey: "",
-			imageGeminiApiKey: "",
 		};
 	}
 
@@ -125,13 +119,9 @@ export default class AIPlugin extends Plugin {
 
 		const textOpenAiSecret = this.settings.textOpenaiApiKeySecretName?.trim();
 		const textGeminiSecret = this.settings.textGeminiApiKeySecretName?.trim();
-		const imageOpenAiSecret = this.settings.imageOpenaiApiKeySecretName?.trim();
-		const imageGeminiSecret = this.settings.imageGeminiApiKeySecretName?.trim();
 
 		this.settings.textOpenaiApiKey = textOpenAiSecret ? (storage.getSecret(textOpenAiSecret) ?? "") : "";
 		this.settings.textGeminiApiKey = textGeminiSecret ? (storage.getSecret(textGeminiSecret) ?? "") : "";
-		this.settings.imageOpenaiApiKey = imageOpenAiSecret ? (storage.getSecret(imageOpenAiSecret) ?? "") : "";
-		this.settings.imageGeminiApiKey = imageGeminiSecret ? (storage.getSecret(imageGeminiSecret) ?? "") : "";
 	}
 
 	private createClient(): LLMProvider {
@@ -152,7 +142,6 @@ export default class AIPlugin extends Plugin {
 
 		let userInput = "";
 		let promptText = "";
-		const messages: ChatMessage[] = [];
 		const needsContext = action.promptTemplate.includes("{{outline}}") || action.promptTemplate.includes("{{section}}") || action.promptTemplate.includes("{{full}}");
 
 		let ctx: any = null;
@@ -220,9 +209,7 @@ export default class AIPlugin extends Plugin {
 		});
 
 		const generationType = action.generationType;
-		const hasKey = generationType === "image"
-			? this.hasImageApiKey()
-			: this.hasTextApiKey();
+		const hasKey = this.hasTextApiKey();
 		if (!hasKey) {
 			new Notice(`Missing ${generationType} API key secret. Configure it in model settings.`);
 			return;
@@ -230,7 +217,7 @@ export default class AIPlugin extends Plugin {
 
 		const startPos = this.resolveInsertPosition(
 			editor,
-			generationType === "image" ? "nextLine" : action.outputMode,
+			action.outputMode,
 		);
 		await this.generationHandlers[generationType]({
 			editor,
@@ -246,17 +233,9 @@ export default class AIPlugin extends Plugin {
 			: Boolean(this.settings.textOpenaiApiKey);
 	}
 
-	private hasImageApiKey(): boolean {
-		return this.settings.imageProvider === "gemini"
-			? Boolean(this.settings.imageGeminiApiKey)
-			: Boolean(this.settings.imageOpenaiApiKey);
-	}
-
 	private async executeTextGeneration(ctx: GenerationContext): Promise<void> {
 		const messages: ChatMessage[] = [];
-		if (this.settings.textSystemPrompt) {
-			messages.push({role: "system", content: this.settings.textSystemPrompt});
-		}
+		messages.push({role: "system", content: DEFAULT_TEXT_SYSTEM_PROMPT});
 		messages.push({role: "user", content: ctx.promptText});
 		await this.blockGenerate(ctx.editor, ctx.startPos, messages);
 	}
@@ -300,51 +279,6 @@ export default class AIPlugin extends Plugin {
 			const msg = err instanceof Error ? err.message : String(err);
 			this.generatingIndicator?.showError(msg);
 			new Notice(`AI error: ${msg}`);
-		}
-	}
-
-	private async executeImageGeneration(
-		editor: Editor,
-		prompt: string,
-		insertPos?: {line: number; ch: number},
-	): Promise<void> {
-		this.setStatus("Generating image...");
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		this.generatingIndicator?.show(view, editor, editor.getCursor());
-
-		try {
-			const finalPrompt = this.settings.imageSystemPrompt
-				? `${this.settings.imageSystemPrompt}\n\n${prompt}`
-				: prompt;
-			const result = await this.imageGenerator.generate(finalPrompt);
-
-			const folder = normalizePath(this.settings.imageSaveFolder);
-			const existing = this.app.vault.getAbstractFileByPath(folder);
-			if (!existing) {
-				await this.app.vault.createFolder(folder);
-			} else if (!(existing instanceof TFolder)) {
-				throw new Error(`"${folder}" exists but is not a folder`);
-			}
-
-			const timestamp = Date.now();
-			const filename = `ai-image-${timestamp}.${result.extension}`;
-			const filePath = `${folder}/${filename}`;
-
-			await this.app.vault.createBinary(filePath, result.data);
-
-			const markdownLink = `![](${filePath})`;
-			const targetPos = insertPos ?? editor.getCursor();
-			editor.replaceRange(`${markdownLink}\n`, targetPos);
-
-			this.setStatus("Done");
-			this.generatingIndicator?.showDone();
-			new Notice("Image generated and inserted.");
-			setTimeout(() => this.setStatus(""), 2000);
-		} catch (err: unknown) {
-			this.setStatus("");
-			const msg = err instanceof Error ? err.message : String(err);
-			this.generatingIndicator?.showError(msg);
-			new Notice(`Image generation error: ${msg}`);
 		}
 	}
 

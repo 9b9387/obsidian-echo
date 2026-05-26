@@ -28,5 +28,5 @@ export function buildPrompt(template: string, replacements: Record<string, strin
 }
 
 export function getAllActions(customActions: CustomAction[]): AIAction[] {
-	return [...BUILTIN_ACTIONS, ...customActions.map(customActionToAIAction)];
+	return [...BUILTIN_ACTIONS, ...customActions.filter(action => action.enabled !== false).map(customActionToAIAction)];
 }

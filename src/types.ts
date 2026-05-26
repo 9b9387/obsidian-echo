@@ -1,4 +1,4 @@
-export type GenerationType = "text" | "image";
+export type GenerationType = "text";
 
 export interface ChatMessage {
 	role: "system" | "user" | "assistant";
@@ -21,6 +21,7 @@ export interface AIAction {
 export interface CustomAction {
 	id: string;
 	name: string;
+	enabled?: boolean;
 	promptTemplate: string;
 	generationType: GenerationType;
 	outputMode: "replace" | "cursor" | "nextLine";

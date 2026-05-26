@@ -21,26 +21,15 @@ The core feature. Trigger with `/echo` or the command palette, an inline input a
 
 Select text and trigger via toolbar, slash command `/translate`, or right-click menu. Translates selected text while preserving formatting.
 
-### Generate Image
-
-Create AI-generated images from text descriptions.
-
-- Select text for context, then trigger via toolbar, `/generate-image`, or right-click menu
-- Choose from preset styles (Photorealistic, Illustration, Watercolor, Oil Painting, Pixel Art, Anime, Minimalist, etc.)
-- Choose image size (Square, Portrait, Landscape)
-- Images are saved to the vault and inserted as Markdown links
-- Supports DALL-E (OpenAI) and Gemini image generation
-
 ### Selection Toolbar
 
-A floating toolbar appears when you select text, providing quick access to Echo, Translate, and Generate Image.
+A floating toolbar appears when you select text, providing quick access to Echo and Translate.
 
 ### Slash Commands
 
 Type `/` in the editor to trigger a command menu:
 - `/echo` — AI write / continue
 - `/translate` — translate selection
-- `/generate-image` — generate image
 
 ### Custom Actions
 
@@ -48,10 +37,10 @@ Define your own AI actions in settings with custom prompt templates. Use `{{sele
 
 ## Supported Providers
 
-| Provider | Text Generation | Image Generation |
-|---|---|---|
-| **OpenAI-compatible** | GPT-4o, GPT-4o-mini, etc. | DALL-E 3 |
-| **Google Gemini** | Gemini 2.5 Flash, etc. | Gemini image generation |
+| Provider | Text Generation |
+|---|---|
+| **OpenAI-compatible** | GPT-4o, GPT-4o-mini, etc. |
+| **Google Gemini** | Gemini 2.5 Flash, etc. |
 
 Switch between providers in settings via a dropdown menu.
 
@@ -80,8 +69,7 @@ Copy `main.js`, `styles.css`, and `manifest.json` to your vault's `.obsidian/plu
 Open **Settings → Obsidian Echo** to configure:
 
 - **Text generation model** — switch between OpenAI-compatible and Gemini; set API key secret, base URL, model ID, and system prompt
-- **Image generation model** — same provider options; set image model ID, save folder, and system prompt
-- **Actions config** — create, edit, or delete AI actions with custom prompt templates, generation type (text/image), trigger method (slash / toolbar / both), output mode, and icon
+- **Actions config** — create, edit, or delete AI actions with custom prompt templates, trigger method (slash / toolbar / both), output mode, and icon
 
 ## Development
 
